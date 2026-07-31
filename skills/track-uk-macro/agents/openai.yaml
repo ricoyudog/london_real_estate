@@ -1,0 +1,4 @@
+interface:
+  display_name: "Track UK Macro"
+  short_description: "Track official UK and London macro indicators"
+  default_prompt: "Use $track-uk-macro to retrieve and explain the latest official UK macro indicators."

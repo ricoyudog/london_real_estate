@@ -1,0 +1,6 @@
+schema: "1.6"
+project: nan_fung
+description: "Free datasource tools for London office market research — pure-stdlib Python fetchers for macro, market, ESG, planning, news, and geography data."
+tracking:
+  provider: github
+  url: https://github.com/ricoyudog/london_real_estate

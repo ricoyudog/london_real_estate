@@ -1,0 +1,4 @@
+interface:
+  display_name: "Check Office ESG"
+  short_description: "Check free official office ESG indicators"
+  default_prompt: "Use $check-office-esg to check official London office ESG indicators."

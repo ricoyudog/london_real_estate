@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Node (reserved)
+node_modules/
+
+# Tooling state
+.codegraph/
+.omo/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local notes vault (Obsidian app state — memory/ and wiki/ ARE tracked)
+.obsidian/

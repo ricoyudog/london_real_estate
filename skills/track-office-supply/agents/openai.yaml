@@ -1,0 +1,4 @@
+interface:
+  display_name: "Track Office Supply"
+  short_description: "Track free London planning and office stock signals"
+  default_prompt: "Use $track-office-supply to inspect London office planning and stock signals."

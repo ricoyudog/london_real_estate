@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monitor Market News"
+  short_description: "Monitor free official market news and policy"
+  default_prompt: "Use $monitor-market-news to monitor official London office market news."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Assess Office Demand"
+  short_description: "Assess free office-demand and hybrid-work indicators"
+  default_prompt: "Use $assess-office-demand to assess current London office demand using free indicators."

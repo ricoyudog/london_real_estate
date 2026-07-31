@@ -1,0 +1,4 @@
+interface:
+  display_name: "Collect Office Market Metrics"
+  short_description: "Collect free London office market report metrics"
+  default_prompt: "Use $collect-office-market-metrics to collect the latest free London office metrics with citations."
