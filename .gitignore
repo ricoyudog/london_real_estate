@@ -13,8 +13,15 @@ dist/
 node_modules/
 
 # Tooling state
-.codegraph/
+.codegraph
 .omo/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
 
 # Editor / OS
 .DS_Store

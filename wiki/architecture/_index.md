@@ -9,4 +9,5 @@ updated: 2026-07-31
 
 ## Pages
 - [[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Python Data Plane]]
+- [[wiki/architecture/datasource|Datasource Persistence Architecture: Observation + Evidence Store]]
 - [[wiki/architecture/implicit-contracts|Implicit Contracts]]
