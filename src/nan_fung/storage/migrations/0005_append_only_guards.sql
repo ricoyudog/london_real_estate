@@ -1,0 +1,150 @@
+-- Immutable provenance is never corrected in place.  Current state is
+-- represented by new revisions/promotion decisions, while mutable workflow
+-- state and derived projection tables remain outside these guards.
+
+CREATE TRIGGER schema_migration_no_update
+BEFORE UPDATE ON schema_migration BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_SCHEMA_MIGRATION');
+END;
+CREATE TRIGGER schema_migration_no_delete
+BEFORE DELETE ON schema_migration BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_SCHEMA_MIGRATION');
+END;
+
+CREATE TRIGGER source_definition_no_update
+BEFORE UPDATE ON source_definition BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_SOURCE_DEFINITION');
+END;
+CREATE TRIGGER source_definition_no_delete
+BEFORE DELETE ON source_definition BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_SOURCE_DEFINITION');
+END;
+CREATE TRIGGER datasource_definition_no_update
+BEFORE UPDATE ON datasource_definition BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_DATASOURCE_DEFINITION');
+END;
+CREATE TRIGGER datasource_definition_no_delete
+BEFORE DELETE ON datasource_definition BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_DATASOURCE_DEFINITION');
+END;
+CREATE TRIGGER datasource_source_no_update
+BEFORE UPDATE ON datasource_source BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_DATASOURCE_SOURCE');
+END;
+CREATE TRIGGER datasource_source_no_delete
+BEFORE DELETE ON datasource_source BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_DATASOURCE_SOURCE');
+END;
+
+CREATE TRIGGER content_object_no_update
+BEFORE UPDATE ON content_object BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_CONTENT_OBJECT');
+END;
+CREATE TRIGGER content_object_no_delete
+BEFORE DELETE ON content_object BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_CONTENT_OBJECT');
+END;
+CREATE TRIGGER evidence_artifact_no_update
+BEFORE UPDATE ON evidence_artifact BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_EVIDENCE_ARTIFACT');
+END;
+CREATE TRIGGER evidence_artifact_no_delete
+BEFORE DELETE ON evidence_artifact BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_EVIDENCE_ARTIFACT');
+END;
+CREATE TRIGGER acquisition_event_no_update
+BEFORE UPDATE ON acquisition_event BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_ACQUISITION_EVENT');
+END;
+CREATE TRIGGER acquisition_event_no_delete
+BEFORE DELETE ON acquisition_event BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_ACQUISITION_EVENT');
+END;
+CREATE TRIGGER run_evidence_no_update
+BEFORE UPDATE ON run_evidence BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_RUN_EVIDENCE');
+END;
+CREATE TRIGGER run_evidence_no_delete
+BEFORE DELETE ON run_evidence BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_RUN_EVIDENCE');
+END;
+CREATE TRIGGER observation_revision_no_update
+BEFORE UPDATE ON observation_revision BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_OBSERVATION_REVISION');
+END;
+CREATE TRIGGER observation_revision_no_delete
+BEFORE DELETE ON observation_revision BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_OBSERVATION_REVISION');
+END;
+CREATE TRIGGER run_observation_no_update
+BEFORE UPDATE ON run_observation BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_RUN_OBSERVATION');
+END;
+CREATE TRIGGER run_observation_no_delete
+BEFORE DELETE ON run_observation BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_RUN_OBSERVATION');
+END;
+CREATE TRIGGER observation_evidence_no_update
+BEFORE UPDATE ON observation_evidence BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_OBSERVATION_EVIDENCE');
+END;
+CREATE TRIGGER observation_evidence_no_delete
+BEFORE DELETE ON observation_evidence BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_OBSERVATION_EVIDENCE');
+END;
+CREATE TRIGGER data_quality_issue_no_update
+BEFORE UPDATE ON data_quality_issue BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_DATA_QUALITY_ISSUE');
+END;
+CREATE TRIGGER data_quality_issue_no_delete
+BEFORE DELETE ON data_quality_issue BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_DATA_QUALITY_ISSUE');
+END;
+CREATE TRIGGER run_promotion_no_update
+BEFORE UPDATE ON run_promotion BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_RUN_PROMOTION');
+END;
+CREATE TRIGGER run_promotion_no_delete
+BEFORE DELETE ON run_promotion BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_RUN_PROMOTION');
+END;
+CREATE TRIGGER review_decision_no_update
+BEFORE UPDATE ON review_decision BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_REVIEW_DECISION');
+END;
+CREATE TRIGGER review_decision_no_delete
+BEFORE DELETE ON review_decision BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_REVIEW_DECISION');
+END;
+CREATE TRIGGER manual_review_promotion_no_update
+BEFORE UPDATE ON manual_review_promotion BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_MANUAL_REVIEW_PROMOTION');
+END;
+CREATE TRIGGER manual_review_promotion_no_delete
+BEFORE DELETE ON manual_review_promotion BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_MANUAL_REVIEW_PROMOTION');
+END;
+CREATE TRIGGER extraction_proposal_no_update
+BEFORE UPDATE ON extraction_proposal BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_EXTRACTION_PROPOSAL');
+END;
+CREATE TRIGGER extraction_proposal_no_delete
+BEFORE DELETE ON extraction_proposal BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_EXTRACTION_PROPOSAL');
+END;
+CREATE TRIGGER output_artifact_no_update
+BEFORE UPDATE ON output_artifact BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_OUTPUT_ARTIFACT');
+END;
+CREATE TRIGGER output_artifact_no_delete
+BEFORE DELETE ON output_artifact BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_OUTPUT_ARTIFACT');
+END;
+CREATE TRIGGER audit_event_no_update
+BEFORE UPDATE ON audit_event BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_AUDIT_EVENT');
+END;
+CREATE TRIGGER audit_event_no_delete
+BEFORE DELETE ON audit_event BEGIN
+    SELECT RAISE(ABORT, 'IMMUTABLE_AUDIT_EVENT');
+END;

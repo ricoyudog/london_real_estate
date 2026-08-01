@@ -9,6 +9,9 @@ dependencies = [
     "pypdf>=5,<7",
 ]
 
+[project.scripts]
+cre = "nan_fung.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.4,<9",
@@ -20,9 +23,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nan_fung"]
+include = ["src/nan_fung/storage/migrations/*.sql"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "-m 'not live and not network'"
 markers = [
-    "live: calls a public datasource over the network",
+    "network: makes a real network request and is excluded from the offline default gate",
+    "live: production-approved automatic ingestion workflow smoke test; always also network",
+    "legacy_live_probe: real-network probe of a legacy SourceResult compatibility adapter",
+    "restricted_live_probe: real-network probe of a policy-blocked, manual, or restricted source",
 ]
