@@ -16,9 +16,12 @@ source: "[[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Pyth
 
 Datasource 取得的正式市場數據由 **Python data plane** 保存，不由 Pi session、chat history 或 Agent memory 保存。MVP 採用：
 
-- **SQLite** 保存 ingestion run、標準化 observation revision、audit metadata 及 claim lineage。
+- **SQLite** 保存ingestion run、標準化observation revision、audit metadata及
+  deterministic projection delivery metadata；目前不保存Agent claim lineage。
 - **本地 content-addressed artifact directory** 保存不可變的原始 response body，例如 JSON、HTML、PDF、CSV、ZIP、XLSX、ODS 和 ArcGIS payload。
 - Python workflow 是唯一正式寫入者；Python Data API、Dashboard 和 Agent tools 透過穩定 read interface 查詢。
+- `wiki/market/` 可以由canonical observations和evidence metadata確定性生成，
+  再copy到Pi的rooted read-only resource workspace；它不是第二個正式數據來源。
 - `production_ingestion`、`source_discovery` 和 `ad_hoc_research` 分 lane 保存，只有通過驗證的 production observation 可以進入 canonical view。
 
 SQLite 和本地 artifact directory 是 MVP 的實體實作；邏輯上的 `Observation + Evidence Store` 不依賴 SQLite。需要多主機、多 writer、集中權限或大量 spatial query 時，metadata／observation 可遷移至 PostgreSQL／PostGIS，raw artifact 可遷移至 S3-compatible object storage，而不改變 Agent tool schema。
@@ -53,7 +56,10 @@ collect request
 
 這個邊界保留 datasource parser 的可重播及可測試性，也讓 scheduled ingestion、Agent ad-hoc research 和 offline reparse 共用同一套保存規則。
 
-Agent 的 read tools 預設查詢已保存數據。若 Agent 觸發 live research call，host-controlled wrapper 可以自動保存 audit 和 evidence，但資料只能進入 `ad_hoc_research` lane，不得直接更新 canonical metrics。
+Agent read tools預設查詢已保存的production canonical數據。Data plane可把future
+live research保存到`ad_hoc_research` lane，但目前Agent Runtime v1不暴露
+`result_ref`；待另作session-scoped non-canonical result Decision後才可進入回答，
+且永不得直接更新canonical metrics。
 
 ## Data Flow
 
@@ -73,7 +79,9 @@ flowchart LR
     LANE -->|"ad-hoc"| RESEARCH["Research evidence"]
 
     CANON --> API["Python Data API / Dashboard"]
-    OBS --> TOOL["Agent tool result\nIDs + bounded records"]
+    CANON --> TOOL["Agent tool facade\nbounded canonical records"]
+    CANON --> WIKI["Generated read-only Wiki\ndate + category"]
+    WIKI --> PI["Pi rooted discovery"]
 ```
 
 ## MVP Physical Layout
@@ -162,16 +170,17 @@ data/
 
 `run_observation` 保存本次 run 看見了哪些 observation。即使 observation 因內容相同而沒有新增 revision，本次 retrieval 仍可審計。
 
-### `output_artifact` and `claim_evidence`
+### `output_artifact`
 
-Agent 提交 chart、table、brief 或 alert 時，保存通過 schema validation 的 typed artifact，而不是把自由文字當正式市場資料。每個 material claim 保存：
+目前`output_artifact`只記錄`projection_daily`、`projection_weekly`、
+`projection_alerts`和`projection_audit`等deterministic delivery metadata；它不是
+Agent artifact／claim store。現行schema沒有`claim_evidence` table，也沒有
+Agent-facing writer contract。
 
-- `claim_type`: `fact` 或 `inference`。
-- `claim_text` 或結構化 value。
-- `evidence_ids`。
-- `as_of` 和 `confidence`。
-
-Fact 必須有 evidence。Inference 可以引用多個 evidence IDs，但不能被提升為 observation。內部 chain-of-thought 不保存為 claim lineage。
+第一個Agent vertical slice的`market_brief.v1`只保存在in-memory Runtime turn，
+不寫入這張表。未來若要持久化chart、brief或material claim，必須另作Decision及
+migration，明確定義fact／inference、observation／evidence lineage、consumer、
+retention和access policy；不可把projection row當成Agent claim。
 
 ## Time Semantics
 
@@ -249,7 +258,7 @@ File 必須先安全落盤，database 才可引用它。若 database transaction
 |---|---|---|
 | `production_ingestion` | 保存 run、raw evidence、validated observations | 通過驗證後可進 canonical view |
 | `source_discovery` | 保存至 quarantine | 不可直接更新 canonical metrics |
-| `ad_hoc_research` | 保存為 research evidence | 可支援當次回答，不可自動更新 dashboard |
+| `ad_hoc_research` | 保存為 research evidence | Data plane可簽發run-scoped result；Agent v1未啟用，不可自動更新dashboard |
 
 Discovery 或 ad-hoc evidence 若要成為正式資料，必須建立 approved datasource definition，並由新的 production run 重新取得及驗證；不要原地改變舊 run 的 lane。
 
@@ -362,6 +371,7 @@ Unknown date 保留 `null`。`proxy`／`report-derived`、原始定義、地理�
 ## References
 
 - [[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Python Data Plane]]
+- [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]]
 - [[wiki/User Requirement|User Requirement]]
 - [[wiki/research/_index|Datasource Research Index]]
 - [SQLite: Appropriate Uses](https://www.sqlite.org/whentouse.html)

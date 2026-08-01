@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 status: accepted
 ---
 
@@ -10,12 +10,17 @@ status: accepted
 
 產品採用 **chatbot + market dashboard** 形式，並以 Pi Agent Harness 作為互動式 Agent runtime：
 
-- **Pi / TypeScript Agent Service** 負責對話、推理、session、Skill 載入、runtime hooks、工具協調及串流事件。
+- **Pi / TypeScript Agent Service** 負責對話、推理、session、Skill／extension 載入、工具協調及串流事件。
 - **Python data plane** 負責資料採集、標準化、計算、證據保存、排程及 CLI 工具。
 - Dashboard 的固定指標直接讀取 Data API；只有自然語言研究、解釋及臨時分析經過 Agent。
-- MVP 使用單一 Market Analyst Agent，不啟用自由遞迴的 multi-agent delegation。
+- Competition MVP 不註冊unrestricted filesystem built-ins；只用Pi tool factories配rooted read-only operations提供`read`／`grep`／`find`／`ls`，在專用resource root查詢allowlisted Skills和dated Markdown projection。不註冊`bash`／`edit`／`write`，亦不使用vector database或專用RAG framework。
+- 在產品支援路徑中，Pi 透過typed tool申請bounded on-demand refresh及查看durable job狀態；只有這條路徑的結果可進入正式資料流程，Pi 不負責執行collector、選promotion lane或寫DB。
+- MVP 使用單一 top-level Market Analyst Agent；它可在同一個 AgentSession 內把複雜目標拆成 bounded sub-tasks，逐步調用 Skills 和 typed tools，但不要求 child agent，也不啟用自由遞迴的 multi-agent delegation。
+- Competition MVP 沿用 Pi 標準 AgentSession lifecycle、Skills、tools 和 events；除 CRE typed tools 及產品 UI event adapter 外，不另建 `competition_profile`、通用 policy engine、task manager 或自訂 `before_agent_start` context injection。
 
 這是一個「**互動層 harness-first、資料層 workflow-first**」的混合架構。Pi 不取代資料 workflow，也不是正式市場數據的 source of truth。
+
+開發分成兩個可獨立驗收的階段：先完成 [[wiki/decisions/agent-tool-facade-foundation|Agent Tool Facade Foundation]]，通過 exit gate 後才開始 [[wiki/decisions/pi-agent-runtime-and-skills-vertical-slice|Pi Agent Runtime and Skills Vertical Slice]]。兩者屬於同一條 vertical delivery path，但不綁成一次性大改動。
 
 ## Compliance Assumption
 
@@ -29,108 +34,117 @@ status: accepted
 
 ```mermaid
 flowchart LR
-    UI["Chatbot + Dashboard"] -->|"SSE / WebSocket"| PI["Pi Agent Service\nTypeScript / Node"]
-    UI -->|"REST"| API["Python Data API"]
+    UI["Chatbot + Dashboard"] -->|"SSE"| PI["Pi Agent Service\nTypeScript / Node"]
+    UI -->|"Product transport"| APP["Dashboard backend / adapter"]
+    APP -->|"in-process typed call"| API["nan_fung.read_api"]
 
-    PI --> TOOLS["Typed custom tools"]
-    TOOLS -->|"固定 argv + JSON"| CLI["Python CRE CLI"]
+    PI --> BUILTINS["Rooted Pi resource tools\nread / grep / find / ls"]
+    BUILTINS --> WIKI
+    PI --> TOOLS["Registered typed tools"]
+    TOOLS -->|"fixed argv + JSON"| FACADE["Agent Tool Facade\nnan-fung-agent-tools"]
+    FACADE -->|"query / citation"| API
+    FACADE -->|"request / status"| BROKER["Trusted refresh broker"]
+    BROKER -->|"versioned bounded request"| SCH["Scheduler daemon / durable jobs"]
 
-    SCH["Scheduler / Workflow"] --> PIPE["採集、標準化、異常檢測"]
+    SCH --> PIPE["採集、標準化、異常檢測"]
     PIPE --> STORE["Observation + Evidence Store"]
-    CLI --> STORE
-    API --> STORE
+    STORE --> API
+    STORE --> RENDER["Canonical-view Wiki renderer"]
+    RENDER --> WIKI["Generated read-only Market Wiki"]
+    WIKI --> PI
 ```
+
+`nan_fung.read_api`在目前datasource decision中是in-process Python service，不是獨立HTTP server。UI只依賴product backend／adapter transport；若未來把它變成remote multi-user API，需另作transport、authentication及tenancy決策。
 
 ### Component Boundaries
 
 | Component | Responsibility | Must not own |
 |---|---|---|
 | Chatbot UI | 對話、串流狀態、來源及 artifact 顯示 | 市場數據計算、權限判斷 |
-| Dashboard | 固定 KPI、圖表、時間序列、警示列表 | 每次載入時要求 LLM 重算數據 |
-| Pi Agent Service | 推理、工具選擇、session、Skill 與 hook lifecycle | 正式市場數據、排程、任意系統存取 |
-| Python Data API | 為 dashboard 提供穩定的 typed read API | 自由形式 Agent reasoning |
-| Python CRE CLI | 可重播、可測試的 Agent capability boundary | 通用 Shell 或任意命令執行 |
+| Dashboard | 固定 KPI、圖表、時間序列、警示列表；經backend adapter使用in-process read service | 每次載入時要求 LLM 重算數據 |
+| Pi Agent Service | 推理、工具選擇、session、Skill／extension lifecycle | 正式市場數據、canonical write／promotion、durable scheduling |
+| Python Data API | 為dashboard／Agent facade提供穩定的in-process typed read API | 自由形式Agent reasoning、直接network transport |
+| Python Agent Tool Facade | 將五個Agent data tools映射至read API／refresh broker，執行product manifest、scoped handles、schema、timeout和response bounds | 暴露operator command、任意Shell、raw result_ref、lane／promotion選擇或canonical write |
+| Python CRE CLI | 本地operator surface，用於人工操作與診斷 | 作為Agent bridge或形成第二套Agent contract |
+| Trusted refresh broker | 驗證host context、fixed request profile、scope、budget、lane及licence後enqueue／讀job status | 直接執行collector、讓Agent選lane／promotion、直接寫observation |
 | Scheduler / Workflow | 採集、重試、idempotency、daily/weekly run、alert rule | 對話 session lifecycle |
-| Evidence Store | observation、source artifact、claim lineage | 只保存 Agent 自由文字而沒有來源 |
+| Evidence Store | observation、source artifact、observation／evidence lineage | 只保存 Agent 自由文字而沒有來源；Agent claim persistence 需另作 Decision |
+| Generated Market Wiki | 按日期／分類投影canonical facts，copy到rooted resource workspace供discovery | 成為第二個可手工修改的source of truth，或在render pending時冒充最新canonical state |
 
 ## Pi Embedding Surface
 
-使用 `@earendil-works/pi-coding-agent` 的 programmatic SDK 和 `createAgentSession()`，而不是只使用低階 `pi-agent-core`：
+使用 Node `>=22.19.0` 及固定版本 `@earendil-works/pi-coding-agent@0.83.0` 的 programmatic SDK 和 `createAgentSession()`，而不是只使用低階 `pi-agent-core`：
 
 - `AgentSession` 管理對話 lifecycle、message history、compaction 和 event streaming。
-- `ResourceLoader` 載入受信任的 Skills、extensions、prompt templates 和 context。
-- Agent Service 透過 SSE 或 WebSocket 把 Pi events 投影成產品自己的 UI event schema。
-- 應 pin 明確的 Pi package version；不可混用舊 `badlogic/pi-mono`／`@mariozechner/*` 和目前 `earendil-works/pi`／`@earendil-works/*` 文件。
+- Session明確傳入`customTools`及strict ResourceLoader。`skillsOverride`取代discovery；
+  in-memory settings、empty agentDir／cwd及startup assertions關閉extensions、
+  packages、context files和prompt templates。
+- Competition MVP 使用 in-memory session，並透過 SSE 把 Pi events 投影成產品自己的 UI event schema。
+- 模型由 `PI_MODEL` 明確指定；啟動時不可用便 fail fast，不做隱式 fallback 或 provider cycling。
+- 不可混用舊 `badlogic/pi-mono`／`@mariozechner/*` 和目前 `earendil-works/pi`／`@earendil-works/*` 文件。
 
-若主要 backend 不是 Node，可以用 Pi RPC 作為 PoC bridge；production 仍優先使用獨立 Node Agent Service 直接嵌入 SDK，避免把 JSONL subprocess protocol 變成主要產品邊界。
+本產品的 Agent Service 本身是 Node，因此直接嵌入 SDK；Pi RPC 不作主要 transport，也不是此 vertical slice 的 fallback。
 
 ## Runtime Guidance Model
 
 ### Skills: how to reason
 
-Skill 是領域 runbook 和分析 guidance，例如：
+Skill 只保存領域 runbook、分析口徑和輸出 guidance；deterministic、可重播、需要schema enforcement的行為屬於 Tool。現有七個 Skill 名稱與舊九工具契約已不再是可直接開工的interface；研究推導見 [[wiki/research/agent-skill-and-tool/skill-and-tool-design|Agent Runtime, Skill and Tool Research]]，正式allowlist及rollout以 [[wiki/decisions/pi-agent-runtime-and-skills-vertical-slice|Pi Agent Runtime and Skills Vertical Slice]] 為準。
 
-- `market_metrics`：指標定義、可比較條件及查詢步驟。
-- `news_monitor`：市場新聞搜尋、去重及來源優先級。
-- `supply_pipeline`：新建、翻新、預租和完工日期的處理規則。
-- `macro_monitor`：利率、GDP、通脹、就業等指標的時間口徑。
-- `submarket_analysis`：City、West End、Canary Wharf 等子市場比較。
-- `source_conflict_resolution`：不同 broker 報告口徑衝突時的處理方式。
-- `report_generator`：daily／weekly brief 的 claim、citation 和輸出要求。
+第一個 vertical slice 只allowlist兩個 Skills：
 
-Skills 只提供 prompt-level guidance，不是權限或安全邊界。正式 run 應由 host 明確綁定所需 Skill；ad-hoc chat 才可以讓模型按描述選擇 Skill。
+- 重寫 `track-uk-macro`：使用新 facade 查詢既有 macro observations，處理canonical latest、freshness、degraded與citation規則。
+- 新增 `generate-grounded-market-brief`：把已取得的 facts／inferences 組裝成帶
+  `supporting_citation_refs`的`market_brief_draft.v1`；runtime再產生
+  host-enriched `market_brief.v1`。
 
-Pi 的標準 Skill 機制會讓模型按需要讀取完整 `SKILL.md`。關閉通用 filesystem tools 後，應提供只能讀取受信任 Skill／reference 目錄的 restricted `read`，或由 host 在 `before_agent_start` 明確注入所需內容。
+其餘 Skills 只有在對應datasource coverage和typed contract存在後才加入。Competition MVP 使用Pi標準Skill loading及progressive disclosure；host在session boot以replacement override傳入allowlist，不另建Skill router，也不以自訂`before_agent_start`注入內容。完整Skill內容只能經rooted `read` adapter載入。
 
-### Hooks / Extensions: runtime policy
+### Runtime lifecycle and extensions
 
-Hook 負責 lifecycle policy 和 enforcement：
+Competition MVP 直接使用 Pi 的 AgentSession、對話澄清、tool loop 和 lifecycle events，不以 custom hooks 重建 runtime：
 
-- `session_start`：建立 user、tenant、session 和 trace context。
-- `before_agent_start`：注入 `as_of_date`、允許的資料範圍、來源 allowlist、成本及時間 budget。
-- 工具呼叫前：驗證 tool allowlist、參數、CLI subcommand、query 數、timeout 和風險等級；不合規時直接阻擋。
-- 工具結果後：正規化、截斷、敏感資料清理，並記錄 evidence、latency、cost 和錯誤。
-- 完成階段：驗證每個數字 claim 都有 evidence ID，並區分 fact 和 inference。
+- 使用者明確指定日期時，Agent 把日期傳給 typed tool；使用者明確要求「最新」時，tool 查詢 canonical latest，並回傳實際 `as_of`、`source_date` 和 `retrieved_at`。
+- 時間會影響答案而使用者未指定日期或期間時，由 Pi 在正常對話中追問想查的時間，不另行注入 host clock、預設 `as_of_date` 或假設「未指定」等於「最新」。
+- London office domain 由固定 system prompt 和 Skills 定義，不在每個 turn 重複注入 scope。
+- Session boot只註冊rooted resource tools和CRE typed tools；tool arguments、
+  product capability、session scope、timeout、query bounds和refresh policy由各
+  tool adapter／broker驗證。
+- Tool result 只做 typed-schema validation、必要的 context-size bounding，並保留 evidence IDs 和錯誤。MVP 假設只處理公開 approved sources，不接收 PII、機密輸入或 production credentials，因此不建立通用敏感資料清理、tenant-aware compliance 或自訂 audit pipeline。
+- Fact／inference 區分和 evidence requirements 由 Skills、tool response schema 及runtime-only `finalize_market_brief` schema 表達，不新增 completion hook。
 
-不應只依賴自然語言 system prompt 或 Skill frontmatter 執行權限控制。
+如需 production auth、tenant policy、敏感資料處理或完整 audit，再以 Pi extensions／hooks 加入；這些不是 Competition MVP 前置工作。
 
-### Tools and CLI: actual capabilities
+### Tools, discovery and Agent facade
 
-Agent 只看到 typed custom tools；每個 tool 內部才調用 Python CLI：
+Competition MVP不另建`wiki_search` tool。Pi可用rooted `read`／`grep`／`find`／
+`ls`查閱staged `wiki/market/`生成頁作discovery；realpath、symlink和root boundary
+由custom operations強制。正式數值仍必須透過typed canonical query取得和驗證，
+尤其在targeted Wiki render仍pending時。
 
-| Agent tool | Example CLI responsibility |
+Agent只註冊五個data tools；每一個都由專用 `nan-fung-agent-tools` facade提供：
+
+| Agent tool | Responsibility |
 |---|---|
-| `query_market_metrics` | 查詢指定指標、子市場和 as-of date |
-| `search_evidence` | 搜尋已保存的來源 artifact 和原文定位 |
-| `search_market_news` | 在允許的來源和日期範圍內搜尋新聞 |
-| `compare_submarkets` | 執行可重現的子市場比較 |
-| `get_supply_pipeline` | 查詢 development／refurbishment／pre-let 項目 |
-| `submit_artifact` | 驗證並提交 chart、table、brief 或 alert artifact |
+| `describe_market_data` | 列出目前實際可查的datasource、series、dimensions、coverage與refresh profile |
+| `query_market_data` | 查詢canonical observations及兩軸freshness；支援canonical latest或明確as-of |
+| `get_citation_metadata` | 以query回傳的scope-bound citation refs取得原anchor的metadata，不回傳raw evidence或整份文件 |
+| `request_data_refresh` | 以allowlisted profile和bounded scope申請durable refresh job |
+| `get_refresh_status` | 查詢job、attempt、promotion及canonical change；health另由`query_market_data`查詢 |
 
-CLI invocation 必須使用固定 binary 和 argv array，並設定 `shell: false`。模型不可拼接任意 Shell command，也不應獲得通用 `bash`、`edit` 或 `write` 工具。
+Facade是Agent-only Python executable，不是operator `cre` CLI。Node host以
+authoritative tool-name argv、`shell: false`、bounded JSON stdin/stdout和10秒
+timeout呼叫；logs只寫stderr。Model-visible arguments與trusted `host_context`
+分離；principal、session capability scope、product allowlist、budget、licence、
+lane及promotion policy均由host持有。
 
-## CLI Contract
+Query／citation response預設最多20筆，Facade單次JSON最多256 KiB；Runtime另有
+全turn 128 KiB／40 records／40 citations累積上限。Cursor、citation、job和approval
+handles綁定session scope。Refresh先回ack，production terminal後必須重新query
+canonical。ONSPD第21次refresh只可由UI向真人取得明確批准；token留在trusted
+data plane，由host-only approval operation重送，模型及Node event永遠看不到token。
 
-所有 Agent 可用 CLI 必須符合以下契約：
-
-- stdout 只輸出符合版本化 schema 的 JSON；logs 寫入 stderr。
-- 使用穩定 exit codes，並支援 timeout 和 cancellation。
-- 輸出包含 `schema_version`、`as_of`、`source_date`、`retrieved_at`、`evidence_ids` 和 `confidence`。
-- read-only 是預設；有 side effect 的操作使用獨立命令和權限。
-- 同一輸入應可重播，並盡可能 deterministic 和 idempotent。
-- 大型文件或 binary 不放入 stdout/context，只回傳 artifact ID 和必要 metadata。
-- Agent 產生的摘要不是 evidence；正式 claim 必須引用 immutable source artifact。
-
-Example logical interface：
-
-```text
-cre metrics query --metric vacancy --submarket city --as-of 2026-07-31 --json
-cre evidence search --query "City vacancy" --from 2026-07-01 --json
-cre news search --query "London office leasing" --from 2026-07-24 --json
-cre submarkets compare --metric prime-rent --as-of 2026-07-31 --json
-```
-
-CLI 是穩定、可審計的 capability boundary；如果後續 process startup latency 過高，可以在不改變 tool schema 的前提下，把內部實作換成 long-running Python service。
+完整wire schemas、exit codes、error taxonomy、bounds及Phase 1 exit gate由 [[wiki/decisions/agent-tool-facade-foundation|Agent Tool Facade Foundation]] 定義。Runtime另外註冊 `finalize_market_brief`；它以host-only turn ledger驗證`market_brief_draft.v1`的exact citation refs，再產生`market_brief.v1`，不穿過facade，也不寫datasource store。
 
 ## Dashboard and Artifact Contract
 
@@ -139,60 +153,67 @@ CLI 是穩定、可審計的 capability boundary；如果後續 process startup 
 - 最新市場 KPI 和時間序列。
 - 子市場比較。
 - 最新警示及 daily／weekly snapshot。
-- source freshness 和 degraded status。
+- retrieval／observation freshness、degraded status和canonical availability。
 
-Pi 處理需要自然語言推理的問題，例如解釋變化、比較口徑、整理證據或回應 ad-hoc research request。
+Pi處理需要自然語言推理的問題，例如解釋變化、比較口徑、整理證據或以已批准
+canonical data回應臨時問題；讀取non-canonical ad-hoc result不屬於v1。
 
-Agent 最終結果不能只有 Markdown。`submit_artifact` 應產生可驗證的 typed artifact：
+第一個vertical slice只產生一種結構化輸出：`market_brief.v1`。Pi把
+`market_brief_draft.v1`交給runtime-only `finalize_market_brief`；runtime依正式
+Decision核對citation ref對應的anchor／run／observation／evidence，並由ledger填入
+source metadata，通過後才由SSE交給frontend渲染。
 
-```json
-{
-  "type": "chart",
-  "title": "City vacancy trend",
-  "chart_spec": {},
-  "evidence_ids": ["ev_123", "ev_456"],
-  "as_of": "2026-07-31",
-  "confidence": "medium"
-}
-```
-
-首批 artifact types：
-
-- `chart`
-- `table`
-- `evidence_list`
-- `market_brief`
-- `alert_explanation`
-
-Frontend 只渲染通過 schema validation 的 artifact。Pi session 是對話及 trace 狀態，不是 dashboard 的 source of truth。
+`market_brief.v1` 只保存在當次in-memory AgentSession，不寫入canonical DB，也不把既有data-plane `output_artifact` projection table當成Agent claim store。其他chart、table、alert等artifact types延後到有明確consumer和Agent persistence decision時再設計。schema與驗收規則由 [[wiki/decisions/pi-agent-runtime-and-skills-vertical-slice|Pi Agent Runtime and Skills Vertical Slice]] 定義。
 
 ## Search and Delegation Policy
 
-### MVP: single agent
+### MVP: single agent with bounded sub-tasks
 
-MVP 使用一個 Market Analyst Agent 配合 deterministic tools，不採用長期角色 agents 或 recursive delegation。只有實測證明 coverage、latency 或 review precision 明顯改善，才考慮 multi-agent。
+MVP 使用一個 Market Analyst Agent 配合 deterministic tools。複雜問題由同一個 AgentSession 拆成有明確目標和依賴關係的 bounded sub-tasks，再按 tool result 繼續、受控重試、降級或完成：
+
+- 分析、比較和下一步選擇由目前 Agent context 完成。
+- 資料查詢、citation metadata lookup和 deterministic 計算由 typed Python tools 完成。
+- 長時間、需重試或需 durable state 的工作由 workflow job 完成，Agent 只 request 和 observe status。
+
+Sub-task 是邏輯執行單位，不等於另一個 Agent。主 Agent 擁有最終整合、evidence validation 和 brief validation；UI 如需顯示進度，可把 tool／job lifecycle events 投影成 sub-task status，而不建立通用 task manager。MVP 不採用長期角色 agents 或 recursive delegation；只有實測證明 context isolation 或並行分析能改善 coverage、latency 或 review precision，才考慮 child AgentSession。
 
 ### Runtime search
 
-Agent 可以自行選擇 bounded search tool，但搜尋分為三個 lane：
+Agent 可以自行選擇bounded search／refresh tool，但不能選lane。Trusted host policy按datasource definition、request profile、source approval和trigger把工作分為三個trust lane：
 
 1. `production_ingestion`：只使用 approved sources，由 workflow 執行。
 2. `source_discovery`：尋找新來源，結果進入 quarantine，不能直接改寫 canonical metrics。
 3. `ad_hoc_research`：支援 chatbot 臨時問題；輸出標記為 research evidence。
 
-每次 search 必須限制 domains、date range、max queries、timeout 和最大結果數。網頁內容一律視為不可信資料，不能改變 runtime instructions 或 tool permissions。
+產品支援的query／refresh tools必須以versioned product capability manifest限制
+datasource、series、dimensions、date range、timeout和最大結果數，且不接受
+arbitrary URL、headers、lane或promotion mode。Competition MVP不註冊`bash`或
+其他network-capable built-in；live data只能經Agent facade向trusted refresh
+broker申請，網頁內容不能改變runtime instructions或tool permissions。
 
-## Security Boundaries
+v1 Agent surface只讀production canonical data。`source_discovery`和
+`ad_hoc_research` lanes仍屬data plane能力，但其`result_ref`不進model，留待
+session-scoped non-canonical result另作Decision。
 
-Pi 沒有內建 filesystem、process、network 或 credential permission system，因此 production 必須另外建立安全邊界：
+Scheduled、release-aware、on-demand和manual是另一個正交的trigger維度；approved on-demand fixed request可以是production，novel live search仍是ad-hoc／discovery。詳細規則由 [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]] 定義。
 
-- Agent Service 在 container／sandbox 內執行。
-- 關閉 Pi 內建 `bash`、`edit`、`write` 和不受限制的 `read`。
-- Python CLI 使用最小權限 service account。
-- credentials 不進入 prompt、Skill 或 tool result。
-- Network egress 和資料來源使用 allowlist。
-- Hooks 提供 policy enforcement 和 audit，但不能取代 OS／container／database 權限。
-- Tool call、evidence access、artifact submission 和 policy rejection 都保留 audit trace。
+## Security Scope
+
+### Competition MVP
+
+本次比賽不把 production security／compliance hardening 納入交付範圍。Demo 只使用公開 approved sources，不主動輸入機密資料或 PII；模型 provider authentication 沿用 Pi 標準設定，不另建 credential system。不實作 auth／tenancy、通用 PII redaction、custom permission engine、network egress policy、container sandbox 或完整 prompt-injection security test suite，因此不宣稱 demo process 已具備 production isolation。
+
+Competition MVP 仍保留資料正確性邊界：Pi 沒有 canonical DB writer credential，正式 observation／evidence／promotion 只能經 Python workflow 和既有 typed boundary 完成。這是避免破壞 canonical data 的 application boundary，不代表系統已達 production security readiness。
+
+### Deferred production gates
+
+Pi 沒有內建 filesystem、process、network 或 credential permission system。正式處理真實 credentials、機密資料、PII 或多租戶流量前，必須另行決定並驗證：
+
+- Agent Service 的 container／sandbox 和 filesystem isolation。
+- Rooted resource adapter、network egress allowlist和credential isolation。
+- 最小權限 service identity、authentication、authorization 和 tenancy。
+- 敏感資料處理、audit retention 和 compliance requirements。
+- Tool／broker policy enforcement，以及 prompt-injection、unauthorized action 和 data-leakage tests。
 
 ## Scheduling Boundary
 
@@ -206,24 +227,46 @@ Pi 不負責 durable scheduling。以下工作由獨立 workflow runner 執行�
 
 Scheduled workflow 可以把已準備好的 typed task 交給 Pi 做 bounded synthesis，但 workflow 必須擁有 run lifecycle 和完成狀態。
 
+可預期來源使用scheduled／release-aware ingestion；「今天／最新」或超過freshness policy的資料可以由受控on-demand refresh更新。Pi只request和observe durable job，不同步執行collector；request先回ack，之後以bounded status polling或UI stream觀察。Production terminal後必須重新query canonical；pending／failure返回last-good health。Live result必須先保存及驗證，才可進入Agent context；詳細規則見 [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]]。
+
 ## Acceptance Criteria
 
-- Agent 只可調用明確 allowlist 的 typed tools，無法執行任意 Shell 或寫入檔案。
+### Competition MVP
+
+- Agent Service 直接使用 Pi 標準 AgentSession、Skills、tools 和 events；沒有 `competition_profile`、通用 policy engine、task manager 或自訂 `before_agent_start` context injection。
+- 日期由使用者要求決定；明確要求「最新」時 typed query 使用 canonical latest並回傳實際 `as_of`／source date，未指定而時間會影響答案時由 Agent 在對話中追問。
+- Demo 只使用公開 approved sources，不主動輸入機密資料或 PII，亦不配置 canonical DB writer credential；模型 provider authentication 沿用 Pi 標準設定，production security／compliance hardening 不阻塞本次比賽驗收。
+- Pi只註冊rooted `read`／`grep`／`find`／`ls` adapter作resource-root discovery；
+  `bash`／`edit`／`write`、extensions、packages及context discovery不註冊，正式
+  數值仍以typed canonical query驗證。
+- 產品支援的 Agent refresh 只能經Agent facade建立policy-selected durable job；Agent不能直接執行collector、寫evidence／observation／canonical DB或選lane／promotion。
+- Trigger mode和trust lane分開；approved on-demand production可以promotion，ad-hoc／discovery永不自動promotion或render canonical Wiki。
+- Refresh ack／status不冒充data result；pending返回last-good health，production terminal後重新query canonical。
 - 每個數字 claim 可追溯至 evidence ID、來源、發布日期和 as-of date。
-- Dashboard 在 Agent 不可用時仍能顯示已採集的指標、圖表和警示。
-- 相同 CLI request 可被獨立重播及測試。
-- Source failure 顯示 degraded status，不由 Agent 補造數據。
-- Skill guidance 不能提升 tool、filesystem、network 或 credential 權限。
-- Prompt-injection 測試不能改變 allowlist 或觸發未授權 action。
-- MVP 在沒有 multi-agent delegation 的情況下完成 chatbot、dashboard、daily/weekly brief 和 ad-hoc research。
+- Pi Service停止時，persisted Python Data API仍可讀canonical Bank Rate；完整dashboard實作不屬於此vertical slice。
+- 相同 Agent Tool request 可被獨立重播及測試。
+- Cursor／citation／job／approval capabilities不能跨session重播；SSE final artifact
+  可用`Last-Event-ID`或turn endpoint恢復。
+- Source failure 顯示兩軸freshness、degraded和canonical availability，不由 Agent 補造數據。
+- 單一 AgentSession 能以bounded sub-tasks、typed tools和durable jobs完成Bank Rate grounded brief vertical slice；daily／weekly brief、廣泛ad-hoc research和完整dashboard待相應product coverage及後續驗收。
+
+### Deferred production acceptance
+
+- Pi process、filesystem、network、credentials 和 tenant boundaries 有可執行的 enforcement，不只依賴 prompt 或 Skill guidance。
+- Prompt-injection tests 不能改變 allowlist、取得 restricted data 或觸發未授權 action。
+- 敏感資料處理、audit、retention 和 compliance controls 按正式部署要求完成。
 
 ## References
 
 - [[wiki/User Requirement|User Requirement]]
 - [[wiki/rearch/UI/chatbot-dashboard-decision|UI Decision: Chatbot Dashboard]]
+- [[wiki/architecture/datasource|Datasource Persistence Architecture]]
+- [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]]
+- [[wiki/research/agent-skill-and-tool/skill-and-tool-design|Agent Runtime, Skill and Tool Research]]
+- [[wiki/decisions/agent-tool-facade-foundation|Agent Tool Facade Foundation]]
+- [[wiki/decisions/pi-agent-runtime-and-skills-vertical-slice|Pi Agent Runtime and Skills Vertical Slice]]
 - [Pi Agent Harness](https://github.com/earendil-works/pi)
 - [Pi SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md)
 - [Pi Skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)
 - [Pi Extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)
 - [Pi RPC mode](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md)
-

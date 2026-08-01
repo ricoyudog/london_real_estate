@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Architecture Index
@@ -10,4 +10,5 @@ updated: 2026-07-31
 ## Pages
 - [[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Python Data Plane]]
 - [[wiki/architecture/datasource|Datasource Persistence Architecture: Observation + Evidence Store]]
+- [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]]
 - [[wiki/architecture/implicit-contracts|Implicit Contracts]]

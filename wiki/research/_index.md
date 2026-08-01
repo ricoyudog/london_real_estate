@@ -9,6 +9,10 @@ updated: 2026-08-01
 
 ## Topics
 
+### Agent Skill and Tool
+
+- [[wiki/research/agent-skill-and-tool/_index|Agent Skill and Tool Research]]
+
 ### Datasource
 
 依照 [[User Requirement]]，目前 **13／13 類均已取得 research-level 可用數據**。
