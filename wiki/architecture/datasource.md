@@ -9,7 +9,7 @@ source: "[[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Pyth
 
 > **Implementation update (2026-08-01):** This architecture is now implemented
 > as the bounded datasource operational system. Actual live persistence results,
-> remaining policy gates and the ONSPD retention-approval procedure are recorded
+> remaining policy gates, ONSPD competition tool budget and retention procedure are recorded
 > in [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]].
 
 ## Decision

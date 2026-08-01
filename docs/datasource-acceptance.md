@@ -42,8 +42,9 @@ The engineering result is that every seeded datasource has an explicit
 operational, legacy-adapter, manual-review, or blocked disposition.  The bound
 production paths are Bank Rate; fixed ONS and Nomis macro series; VOA, ONS
 hybrid-working, and MHCLG EPC releases; and a bounded, retention-gated ONSPD
-postcode lookup. ONSPD requires a human-approved deadline at the trusted
-daemon boundary before any live capture. PLD, GOV.UK content/search, GLA
+postcode lookup. ONSPD requires a competition-project-approved deadline at the
+trusted daemon boundary before any live capture; it does not require a
+personnel directory. PLD, GOV.UK content/search, GLA
 boundaries, and restricted
 MPC content remain blocked; BNP and Rightmove remain manual/review workflows.
 Those policy states are part of the acceptance result and must be preserved

@@ -170,13 +170,34 @@ one postcode, then supply the retention decision at the trusted daemon boundary:
 cre --config /etc/cre/cre.toml ingest enqueue ons.onspd.postcode \
   --request '{"postcode":"EC2Y 5AS"}'
 cre --config /etc/cre/cre.toml daemon once --allow-network \
-  --onspd-retention-until 2030-01-01T00:00:00Z
+  --onspd-retention-until 2026-10-30T23:59:59Z
 ```
 
 Agent-facing refresh requests use a trusted profile that requires exactly one
 `postcode` scope value; they cannot select a URL, layer, output SRID, lane, or
 retention deadline.  A missing deadline closes the job as
 `RETENTION_APPROVAL_REQUIRED` before network or CAS activity.
+
+### Competition ONSPD tool budget
+
+For the competition host, `request_refresh_v1` for `ons.onspd.postcode` has a
+durable global budget of **20 newly queued agent refresh jobs per
+`Europe/London` calendar day**. It is enforced by SQLite, so a daemon or broker
+restart cannot reset it. Status reads, idempotent replays, and cooldown
+deduplications do not create another job and therefore do not consume budget.
+
+The 21st new request returns `confirmation_required` with a confirmation code
+that expires in 10 minutes. The host must make a second call using the same
+principal, `request_instance_id`, postcode scope, and confirmation code before
+the job is queued. The trusted host may use the fixed principal
+`competition-agent`; no staff or role directory is required. This restriction
+applies to the agent-facing refresh tool, not to local operator commands,
+which must never be exposed to the competition agent.
+
+`2026-10-30T23:59:59Z` is the proposed 90-day ONSPD retention deadline for the
+competition. It is not an activated permission: confirm the exact timestamp
+before passing it to a live daemon. Preserve the current ONS / OS / Royal Mail
+attribution and reuse conditions described in the [ONS Geography licences](https://www.ons.gov.uk/methodology/geography/licences).
 
 For an offline fixture drill, the direct Bank Rate command is allowed and has
 the same ingestion lifecycle after acquisition:
