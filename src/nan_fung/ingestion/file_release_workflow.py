@@ -26,7 +26,9 @@ from nan_fung.datasources.hybrid import (
 )
 from nan_fung.datasources.market import (
     VOA_STOCK_COLLECTION_URL,
+    is_current_voa_stock_release_page_url,
     parse_current_voa_london_office_stock_zip,
+    parse_voa_current_release_page_html,
     parse_voa_office_stock_collection_html,
 )
 
@@ -76,6 +78,7 @@ class FileReleaseContract:
     release_policy: SourcePolicy
     discovery_parser: Callable[[bytes], Any]
     release_parser: Callable[[bytes], Any]
+    selection_parser: Callable[[bytes], Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,8 +141,9 @@ _CONTRACTS = MappingProxyType(
             release_policy=SourcePolicy(
                 ("assets.publishing.service.gov.uk",), artifact=_VOA_RELEASE_POLICY
             ),
-            discovery_parser=parse_voa_office_stock_collection_html,
+            discovery_parser=parse_voa_current_release_page_html,
             release_parser=parse_current_voa_london_office_stock_zip,
+            selection_parser=parse_voa_office_stock_collection_html,
         ),
         HYBRID_DATASOURCE_ID: FileReleaseContract(
             datasource_id=HYBRID_DATASOURCE_ID,
@@ -229,6 +233,19 @@ def adapt_release_metadata(
     )
 
 
+def adapt_selection_metadata(
+    datasource_id: str,
+    response: AcquisitionMetadataLike,
+    *,
+    selection_url: str,
+) -> FileReleaseAcquisition:
+    """Validate the VOA collection-selected release page before parsing it."""
+
+    return _adapt_metadata(
+        contract_for(datasource_id), "selection", response, selection_url=selection_url
+    )
+
+
 def release_url_from_discovery(datasource_id: str, parsed: Any) -> str:
     """Validate a parser-selected URL before it becomes a second acquisition."""
 
@@ -243,6 +260,23 @@ def release_url_from_discovery(datasource_id: str, parsed: Any) -> str:
     else:
         candidate = parsed
     return validate_release_url(datasource_id, candidate)
+
+
+def selection_url_from_discovery(datasource_id: str, parsed: Any) -> str:
+    """Validate the selected intermediate release page for the VOA workflow."""
+
+    contract = contract_for(datasource_id)
+    if contract.selection_parser is None:
+        raise FileReleaseWorkflowError("datasource has no intermediate release page")
+    if not isinstance(parsed, str) or not parsed:
+        raise FileReleaseWorkflowError("collection did not return a release page URL")
+    try:
+        validate_source_url(parsed, contract.discovery_policy, resolver=None)
+    except PolicyError as error:
+        raise FileReleaseWorkflowError("release page URL is not approved") from error
+    if datasource_id != VOA_DATASOURCE_ID or not is_current_voa_stock_release_page_url(parsed):
+        raise FileReleaseWorkflowError("collection selected an invalid VOA release page")
+    return parsed
 
 
 def validate_release_url(datasource_id: str, candidate: object) -> str:
@@ -342,10 +376,17 @@ def _adapt_metadata(
     response: AcquisitionMetadataLike,
     *,
     release_url: str | None = None,
+    selection_url: str | None = None,
 ) -> FileReleaseAcquisition:
-    if stage not in {"discovery", "release"}:
+    if stage not in {"discovery", "selection", "release"}:
         raise FileReleaseWorkflowError("unsupported file-release stage")
-    expected_url = contract.discovery_url if stage == "discovery" else release_url
+    expected_url = (
+        contract.discovery_url
+        if stage == "discovery"
+        else selection_url
+        if stage == "selection"
+        else release_url
+    )
     if not isinstance(expected_url, str) or not expected_url:
         raise FileReleaseWorkflowError("release metadata requires its discovered URL")
     if response.request_url != expected_url:
@@ -358,7 +399,7 @@ def _adapt_metadata(
         )
     if not isinstance(response.headers, Mapping) or not _content_type(response.headers):
         raise FileReleaseWorkflowError("file-release responses require Content-Type")
-    policy = contract.discovery_policy if stage == "discovery" else contract.release_policy
+    policy = contract.release_policy if stage == "release" else contract.discovery_policy
     try:
         validate_source_url(expected_url, policy, resolver=None)
         validate_source_url(response.final_url, policy, resolver=None)
@@ -373,7 +414,7 @@ def _adapt_metadata(
         datasource_id=contract.datasource_id,
         stage=stage,
         source_id=(
-            contract.discovery_source_id if stage == "discovery" else contract.release_source_id
+            contract.release_source_id if stage == "release" else contract.discovery_source_id
         ),
         request_url=redact_url(expected_url),
         final_url=redact_url(response.final_url),

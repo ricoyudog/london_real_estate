@@ -146,6 +146,18 @@ def test_parse_voa_office_stock_collection_html_refuses_ambiguous_releases() -> 
         )
 
 
+def test_parse_voa_current_release_page_html_selects_the_newest_release_page() -> None:
+    assert market.parse_voa_current_release_page_html(
+        b'<a href="/government/statistics/non-domestic-rating-stock-of-properties-2025">'
+        b"old</a>"
+        b'<a href="/government/statistics/non-domestic-rating-stock-of-properties-march-2026">'
+        b"current</a>"
+    ) == (
+        "https://www.gov.uk/government/statistics/"
+        "non-domestic-rating-stock-of-properties-march-2026"
+    )
+
+
 def test_discover_voa_office_stock_url_uses_collection_page(monkeypatch) -> None:
     monkeypatch.setattr(
         market,

@@ -338,11 +338,27 @@ def test_live_file_release_capture_streams_discovery_and_release_to_cas(
 ) -> None:
     store = OperationalStore(tmp_path)
     contract = contract_for(VOA_DATASOURCE_ID)
+    selection_url = (
+        "https://www.gov.uk/government/statistics/"
+        "non-domestic-rating-stock-of-properties-march-2026"
+    )
     release_url = (
         "https://assets.publishing.service.gov.uk/media/example/"
         "ndr_stock_of_properties_2026.zip"
     )
     opened: list[str] = []
+    gate_events: list[tuple[str, bool]] = []
+
+    class Gate:
+        def permit(self, host: str, *, continuation: bool = False) -> None:
+            gate_events.append((host, continuation))
+
+        def record_response(
+            self, _host: str, *, status: int, retry_after: str | None
+        ) -> None:
+            assert status == 200
+            assert retry_after is None
+            return None
 
     class Response:
         status = 200
@@ -375,6 +391,12 @@ def test_live_file_release_capture_streams_discovery_and_release_to_cas(
         if request.full_url == contract.discovery_url:
             return Response(
                 request.full_url,
+                f'<a href="{selection_url}">release</a>'.encode(),
+                "text/html",
+            )
+        if request.full_url == selection_url:
+            return Response(
+                request.full_url,
                 f'<a href="{release_url}">release</a>'.encode(),
                 "text/html",
             )
@@ -391,14 +413,68 @@ def test_live_file_release_capture_streams_discovery_and_release_to_cas(
     capture = acquire_live_file_release(
         VOA_DATASOURCE_ID,
         artifact_store=store.artifacts,
+        host_gate=Gate(),
         resolver=lambda _host: ("8.8.8.8",),
     )
 
-    assert opened == [contract.discovery_url, release_url]
+    assert opened == [contract.discovery_url, selection_url, release_url]
+    assert gate_events == [
+        ("www.gov.uk", False),
+        ("www.gov.uk", True),
+        ("assets.publishing.service.gov.uk", False),
+    ]
     assert isinstance(capture.discovery, StoredAcquisitionResponse)
+    assert isinstance(capture.selection, StoredAcquisitionResponse)
     assert isinstance(capture.release, StoredAcquisitionResponse)
     assert store.artifacts.verify(capture.discovery.artifact)
+    assert capture.selection is not None
+    assert store.artifacts.verify(capture.selection.artifact)
     assert store.artifacts.verify(capture.release.artifact)
+
+
+def test_voa_release_selection_persists_a_three_artifact_lineage(tmp_path: Path) -> None:
+    store = OperationalStore(tmp_path)
+    contract = contract_for(VOA_DATASOURCE_ID)
+    selection_url = (
+        "https://www.gov.uk/government/statistics/"
+        "non-domestic-rating-stock-of-properties-march-2026"
+    )
+    release_url = (
+        "https://assets.publishing.service.gov.uk/media/example/"
+        "ndr_stock_of_properties_2026.zip"
+    )
+    discovery = _response(
+        contract.discovery_url,
+        f'<a href="{selection_url}">March 2026</a>'.encode(),
+        "text/html",
+    )
+    selection = _response(
+        selection_url,
+        f'<a href="{release_url}">download</a>'.encode(),
+        "text/html",
+    )
+    release = _response(release_url, _voa_zip(), "application/zip")
+
+    result = ingest_file_release_artifacts(
+        store,
+        VOA_DATASOURCE_ID,
+        discovery=discovery,
+        selection=selection,
+        release=release,
+    )
+
+    assert result.status == "succeeded"
+    assert result.discovery_evidence_id is not None
+    assert result.selection_evidence_id is not None
+    connection = connect_database(store.database_path, read_only=True)
+    try:
+        roles = connection.execute(
+            "SELECT role FROM run_evidence WHERE run_id = ? ORDER BY role",
+            (result.run_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [row["role"] for row in roles] == ["discovery", "primary", "supporting"]
 
 
 def test_file_release_refuses_a_release_url_not_selected_by_its_saved_discovery(

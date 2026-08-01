@@ -91,14 +91,16 @@ def test_parse_hybrid_working_dataset_html_refuses_unsafe_or_nonmatching_links()
             )
 
 
-def test_parse_hybrid_working_dataset_html_refuses_ambiguous_workbooks() -> None:
-    with pytest.raises(ValueError, match="ambiguous"):
-        hybrid.parse_hybrid_working_dataset_html(
-            b'<a href="/file?uri=/datasets/workingarrangements/june/'
-            b'workingarrangementsjune2027.xlsx">old</a>'
-            b'<a href="/file?uri=/datasets/workingarrangements/july/'
-            b'workingarrangementsjuly2027.xlsx">new</a>'
-        )
+def test_parse_hybrid_working_dataset_html_uses_the_first_publisher_download() -> None:
+    assert hybrid.parse_hybrid_working_dataset_html(
+        b'<a href="/file?uri=/datasets/workingarrangements/july/'
+        b'workingarrangementsjuly2027.xlsx">current</a>'
+        b'<a href="/file?uri=/datasets/workingarrangements/june/'
+        b'workingarrangementsjune2027.xlsx">historical</a>'
+    ) == (
+        "https://www.ons.gov.uk/file?uri=/datasets/workingarrangements/july/"
+        "workingarrangementsjuly2027.xlsx"
+    )
 
 
 def test_discover_hybrid_working_xlsx_url(monkeypatch: pytest.MonkeyPatch) -> None:

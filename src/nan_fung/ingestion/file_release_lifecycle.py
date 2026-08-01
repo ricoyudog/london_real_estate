@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 from nan_fung.datasources.common import (
     AcquisitionMetadata,
@@ -27,9 +28,11 @@ from .file_release_workflow import (
     FileReleaseWorkflowError,
     adapt_discovery_metadata,
     adapt_release_metadata,
+    adapt_selection_metadata,
     contract_for,
     record_metadata_for,
     release_url_from_discovery,
+    selection_url_from_discovery,
     validate_release_url,
 )
 from .parser_runner import parse_saved_artifact
@@ -48,7 +51,7 @@ FileReleaseArtifact = AcquisitionResponse | StoredAcquisitionResponse
 
 @dataclass(frozen=True, slots=True)
 class FileReleaseCapture:
-    """The two artifacts that make up one discovered official release.
+    """The evidence artifacts that make up one discovered official release.
 
     Live collection supplies streamed CAS handles; tests and offline operator
     fixtures may supply the same metadata with in-memory bytes.
@@ -56,6 +59,7 @@ class FileReleaseCapture:
 
     discovery: FileReleaseArtifact
     release: FileReleaseArtifact
+    selection: FileReleaseArtifact | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +69,7 @@ class FileReleaseLifecycleResult:
     run_id: str
     evidence_id: str
     discovery_evidence_id: str | None
+    selection_evidence_id: str | None
     observation_ids: tuple[str, ...]
     status: str
     canonical_changed: bool
@@ -78,10 +83,10 @@ def acquire_live_file_release(
     before_publish: Callable[[str, AcquisitionMetadata], None] | None = None,
     resolver: Callable[[str], Iterable[str]] | None = None,
 ) -> FileReleaseCapture:
-    """Capture a fixed discovery page and its selected release into the CAS.
+    """Capture the fixed discovery chain and selected release into the CAS.
 
-    Discovery is parsed only from the first saved artifact and can select only
-    the contract's second-stage URL.  No network handle reaches the parser.
+    Discovery is parsed only from saved artifacts and can select only the
+    contract's approved next-stage URL.  No network handle reaches the parser.
     """
 
     contract = _contract(datasource_id)
@@ -104,6 +109,31 @@ def acquire_live_file_release(
     parsed = parse_saved_artifact(
         artifact_store, discovery.artifact, contract.discovery_parser
     )
+    selection: StoredAcquisitionResponse | None = None
+    if contract.selection_parser is not None:
+        selection_url = selection_url_from_discovery(datasource_id, parsed)
+
+        def selection_preflight(metadata: AcquisitionMetadata) -> None:
+            adapt_selection_metadata(
+                datasource_id, metadata, selection_url=selection_url
+            )
+            if before_publish is not None:
+                before_publish(contract.discovery_source_id, metadata)
+
+        selection = acquire_to_artifact(
+            selection_url,
+            artifact_store=artifact_store,
+            policy=contract.discovery_policy,
+            host_gate=host_gate,
+            before_publish=selection_preflight,
+            max_stream_seconds=_MAX_STREAM_SECONDS,
+            resolver=resolver,
+            continuation_hosts=_continuation_hosts(discovery),
+            require_full_response=True,
+        )
+        parsed = parse_saved_artifact(
+            artifact_store, selection.artifact, contract.selection_parser
+        )
     release_url = release_url_from_discovery(datasource_id, parsed)
 
     def release_preflight(metadata: AcquisitionMetadata) -> None:
@@ -119,9 +149,10 @@ def acquire_live_file_release(
         before_publish=release_preflight,
         max_stream_seconds=_MAX_STREAM_SECONDS,
         resolver=resolver,
+        continuation_hosts=_continuation_hosts(discovery, selection),
         require_full_response=True,
     )
-    return FileReleaseCapture(discovery, release)
+    return FileReleaseCapture(discovery, release, selection)
 
 
 def ingest_file_release_artifacts(
@@ -130,6 +161,7 @@ def ingest_file_release_artifacts(
     *,
     release: FileReleaseArtifact,
     discovery: FileReleaseArtifact | None = None,
+    selection: FileReleaseArtifact | None = None,
     lane: str = "production_ingestion",
     worker_id: str = "file-release-worker",
     existing_run: RunHandle | None = None,
@@ -163,6 +195,7 @@ def ingest_file_release_artifacts(
     )
     try:
         discovery_evidence: PersistedEvidence | None = None
+        selection_evidence: PersistedEvidence | None = None
         if discovery is not None:
             discovery_metadata = adapt_discovery_metadata(datasource_id, discovery)
             _validate_artifact_policy(store, contract, "discovery", discovery)
@@ -180,7 +213,37 @@ def ingest_file_release_artifacts(
                 contract.discovery_parser,
                 isolate_parser=isolate_parser,
             )
-            release_url = release_url_from_discovery(datasource_id, parsed_discovery)
+            if selection is not None:
+                if contract.selection_parser is None:
+                    raise FileReleaseLifecycleError(
+                        "file-release selection is not part of this datasource contract"
+                    )
+                selection_url = selection_url_from_discovery(
+                    datasource_id, parsed_discovery
+                )
+                selection_metadata = adapt_selection_metadata(
+                    datasource_id,
+                    selection,
+                    selection_url=selection_url,
+                )
+                _validate_artifact_policy(store, contract, "selection", selection)
+                selection_evidence = _persist_artifact(
+                    store,
+                    run,
+                    selection_metadata,
+                    selection,
+                    role="supporting",
+                    at=at,
+                )
+                parsed_selection = _parse_saved(
+                    store,
+                    selection_evidence,
+                    contract.selection_parser,
+                    isolate_parser=isolate_parser,
+                )
+                release_url = release_url_from_discovery(datasource_id, parsed_selection)
+            else:
+                release_url = release_url_from_discovery(datasource_id, parsed_discovery)
         else:
             release_url = validate_release_url(datasource_id, _request_url(release))
         release_metadata = adapt_release_metadata(
@@ -215,6 +278,9 @@ def ingest_file_release_artifacts(
             evidence_id=evidence.evidence_id,
             discovery_evidence_id=(
                 discovery_evidence.evidence_id if discovery_evidence is not None else None
+            ),
+            selection_evidence_id=(
+                selection_evidence.evidence_id if selection_evidence is not None else None
             ),
             observation_ids=observation_ids,
             status=status,
@@ -422,7 +488,7 @@ def _validate_artifact_policy(
     stage: str,
     artifact: FileReleaseArtifact,
 ) -> None:
-    policy = contract.discovery_policy if stage == "discovery" else contract.release_policy
+    policy = contract.release_policy if stage == "release" else contract.discovery_policy
     media_type = _media_type(artifact.headers)
     if isinstance(artifact, StoredAcquisitionResponse):
         validate_artifact_file(
@@ -433,6 +499,19 @@ def _validate_artifact_policy(
         )
         return
     validate_artifact_bytes(artifact.body, media_type=media_type, policy=policy.artifact)
+
+
+def _continuation_hosts(*artifacts: FileReleaseArtifact | None) -> tuple[str, ...]:
+    """Return validated prior-hop hosts for one logical release acquisition."""
+
+    hosts: set[str] = set()
+    for artifact in artifacts:
+        if artifact is None:
+            continue
+        host = urlparse(artifact.final_url).hostname
+        if host:
+            hosts.add(host)
+    return tuple(hosts)
 
 
 def _parse_saved(

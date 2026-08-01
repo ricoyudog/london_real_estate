@@ -21,14 +21,14 @@ def _add_row(table: Table, values: list[object]) -> None:
     table.addElement(row)
 
 
-def _epc_workbook(*, valid_schema: bool = True) -> bytes:
+def _epc_workbook(*, valid_schema: bool = True, snapshot_style: bool = False) -> bytes:
     document = OpenDocumentSpreadsheet()
     table = Table(name="A_by_Region")
     _add_row(
         table,
         [
-            "A- Non-Domestic Properties by Region by Energy Performance Asset "
-            "Rating - in each Year/Quarter to 30 June 2026"
+            "A- Non-Domestic Properties by Region by Energy Performance "
+            f"{'Rating' if snapshot_style else 'Asset Rating'} - in each Year/Quarter to 30 June 2026"
         ],
     )
     _add_row(table, ["This worksheet contains one table."])
@@ -63,11 +63,39 @@ def _epc_workbook(*, valid_schema: bool = True) -> bytes:
     )
     _add_row(
         table,
-        ["London", "2026/1", 3400, 3_100_000, 10, 400, 1500, 1000, 350, 110, 20, 10, 0],
+        [
+            "London",
+            "" if snapshot_style else "2026/1",
+            3400,
+            3_100_000,
+            10,
+            400,
+            1500,
+            1000,
+            350,
+            110,
+            20,
+            10,
+            0,
+        ],
     )
     _add_row(
         table,
-        ["London", "2026/2", 3630, 3_102_511, 13, 482, 1621, 1019, 358, 119, 13, 5, 0],
+        [
+            "London",
+            "" if snapshot_style else "2026/2",
+            3630,
+            3_102_511,
+            13,
+            482,
+            1621,
+            1019,
+            358,
+            119,
+            13,
+            5,
+            0,
+        ],
     )
     document.spreadsheet.addElement(table)
     output = BytesIO()
@@ -119,6 +147,14 @@ def test_parse_non_domestic_epc_ratings_ods_is_a_pure_artifact_parser() -> None:
         record["scope"] == "all non-domestic properties, not offices only"
         for record in records
     )
+
+
+def test_parse_non_domestic_epc_ratings_ods_skips_summary_rows_without_a_quarter() -> None:
+    records = esg.parse_non_domestic_epc_ratings_ods(
+        _epc_workbook(snapshot_style=True)
+    )
+
+    assert records == []
 
 
 def test_parse_non_domestic_epc_ratings_ods_rejects_an_unrecognized_table_schema() -> None:

@@ -25,12 +25,18 @@ VOA_STOCK_URL = (
     "69f9bdf9a96f4d06cda76fbf/ndr_stock_of_properties_2026.zip"
 )
 VOA_STOCK_COLLECTION_URL = (
-    "https://www.gov.uk/government/statistics/non-domestic-rating-stock-of-properties"
+    "https://www.gov.uk/government/collections/"
+    "non-domestic-rating-stock-of-properties-collection"
 )
 _LONDON_REGION_CODE = "E12000007"
 _VOA_COUNT_MEMBER = "table_SOP5_1.csv"
 _VOA_RATEABLE_VALUE_MEMBER = "table_SOP5_2.csv"
 _VOA_STOCK_FILENAME = re.compile(r"ndr_stock_of_properties_\d{4}\.zip", re.I)
+_VOA_RELEASE_PAGE_PATH = re.compile(
+    r"^/government/statistics/non-domestic-rating-stock-of-properties"
+    r"(?:-[a-z]+)?-(?P<year>\d{4})$",
+    re.I,
+)
 _VOA_YEAR_COLUMN = re.compile(r"\d{4}")
 _BNP_POLICY = SourcePolicy(("www.realestate.bnpparibas.co.uk",))
 _VOA_ARTIFACT_POLICY = ArtifactPolicy(max_bytes=250 * 1024 * 1024)
@@ -144,7 +150,7 @@ class _HrefCollector(HTMLParser):
 
 
 def parse_voa_office_stock_collection_html(evidence: bytes) -> str:
-    """Select one safe NDR stock ZIP from captured official collection HTML."""
+    """Select one safe NDR stock ZIP from a captured official release page."""
 
     candidates: set[str] = set()
     for href in _hrefs_from_html(evidence):
@@ -161,6 +167,59 @@ def parse_voa_office_stock_collection_html(evidence: bytes) -> str:
     return candidates.pop()
 
 
+def parse_voa_current_release_page_html(evidence: bytes) -> str:
+    """Select the newest dated VOA stock release page from its collection.
+
+    GOV.UK's collection links to release landing pages rather than directly to
+    the ZIP.  The page itself is retained as evidence before its attachment is
+    acquired, so a later parser can audit each selection step.
+    """
+
+    direct_assets: set[str] = set()
+    release_pages: dict[str, int] = {}
+    for href in _hrefs_from_html(evidence):
+        url = urljoin("https://www.gov.uk", html.unescape(href).strip())
+        if _looks_like_voa_stock_url(url):
+            if not _is_approved_voa_stock_url(url):
+                raise ValueError("VOA stock ZIP URL is not an approved official asset")
+            direct_assets.add(_canonical_voa_stock_url(url))
+            continue
+        match = _VOA_RELEASE_PAGE_PATH.fullmatch(urlparse(url).path)
+        if not match or not is_current_voa_stock_release_page_url(url):
+            continue
+        release_pages[url] = int(match["year"])
+    if direct_assets:
+        if len(direct_assets) != 1:
+            raise ValueError("VOA collection HTML contains ambiguous NDR stock ZIP links")
+        return direct_assets.pop()
+    if not release_pages:
+        raise ValueError("no approved VOA NDR stock release page was found in collection HTML")
+    newest_year = max(release_pages.values())
+    newest = sorted(url for url, year in release_pages.items() if year == newest_year)
+    if len(newest) != 1:
+        raise ValueError("VOA collection HTML contains ambiguous current release pages")
+    return newest[0]
+
+
+def is_current_voa_stock_release_page_url(url: str) -> bool:
+    """Return whether ``url`` is a dated, fixed GOV.UK VOA release page."""
+
+    try:
+        parsed = urlparse(url)
+        return (
+            parsed.scheme.casefold() == "https"
+            and parsed.hostname == "www.gov.uk"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port is None
+            and not parsed.query
+            and not parsed.fragment
+            and _VOA_RELEASE_PAGE_PATH.fullmatch(parsed.path) is not None
+        )
+    except ValueError:
+        return False
+
+
 def discover_voa_office_stock_url(
     collection_url: str = VOA_STOCK_COLLECTION_URL,
 ) -> str:
@@ -168,7 +227,11 @@ def discover_voa_office_stock_url(
 
     evidence = get_bytes(collection_url, policy=_GOVUK_COLLECTION_POLICY)
     if collection_url == VOA_STOCK_COLLECTION_URL:
-        return parse_voa_office_stock_collection_html(evidence)
+        selected = parse_voa_current_release_page_html(evidence)
+        if _looks_like_voa_stock_url(selected):
+            return selected
+        release_evidence = get_bytes(selected, policy=_GOVUK_COLLECTION_POLICY)
+        return parse_voa_office_stock_collection_html(release_evidence)
 
     # The caller-provided URL path remains for the historical test adapter.
     page = evidence.decode("utf-8", errors="replace")

@@ -31,10 +31,7 @@ _EPC_SCOPE = "all non-domestic properties, not offices only"
 _EPC_ARTIFACT_POLICY = ArtifactPolicy(max_bytes=250 * 1024 * 1024)
 _GOVUK_CONTENT_POLICY = SourcePolicy(("www.gov.uk",))
 _EPC_ATTACHMENT_POLICY = SourcePolicy(("assets.publishing.service.gov.uk",))
-_EPC_TABLE_TITLE_PREFIX = (
-    "a- non-domestic properties by region by energy performance asset rating "
-    "- in each year/quarter"
-)
+_EPC_TABLE_TITLE_PREFIX = "a- non-domestic properties by region by energy performance"
 _EPC_SOURCE_PREFIX = (
     "source: energy performance certificates for buildings register"
 )
@@ -115,7 +112,7 @@ def parse_non_domestic_epc_ratings_ods(
         records.append(
             {
                 "region": values[0],
-                "quarter": quarter,
+                "quarter": quarter.strip(),
                 "number_lodgements": values[2],
                 "total_floor_area_m2": values[3],
                 "rating_a_plus": values[4],

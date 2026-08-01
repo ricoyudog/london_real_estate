@@ -390,6 +390,7 @@ class DatasourceSupervisor:
                         self._store,
                         datasource_id,
                         discovery=capture.discovery,
+                        selection=capture.selection,
                         release=capture.release,
                         lane=run.lane,
                         worker_id=self._worker_id,

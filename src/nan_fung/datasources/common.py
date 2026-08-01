@@ -417,6 +417,7 @@ def acquire_to_artifact(
     policy: SourcePolicy | None = None,
     resolver: Callable[[str], Iterable[str]] | None = None,
     host_gate: HostRequestGate | None = None,
+    continuation_hosts: Iterable[str] = (),
     before_publish: Callable[[AcquisitionMetadata], None] | None = None,
     max_stream_seconds: float | None = None,
     monotonic_clock: Callable[[], float] = monotonic,
@@ -426,7 +427,10 @@ def acquire_to_artifact(
 
     Unlike :func:`acquire`, this additive path never materializes response
     chunks in memory.  Artifact policy validation runs on the private fsynced
-    temporary file before its atomic CAS publication.
+    temporary file before its atomic CAS publication.  A trusted workflow may
+    pass hosts from an immediately preceding selected artifact as
+    ``continuation_hosts``; this preserves one logical multi-stage acquisition
+    while the durable gate still rejects any active 429 block.
     """
 
     if policy is None:
@@ -468,7 +472,7 @@ def acquire_to_artifact(
     redirect_limit = policy.max_redirects
     current_url = request_url
     redirects = 0
-    permitted_hosts: set[str] = set()
+    permitted_hosts = {_throttle_host(host) for host in continuation_hosts}
     while True:
         raw_host = urlparse(current_url).hostname
         if raw_host is None:  # ``validate_target`` already rejects this case.

@@ -164,21 +164,26 @@ class _HrefCollector(HTMLParser):
 
 
 def parse_hybrid_working_dataset_html(evidence: bytes) -> str:
-    """Select one safe working-arrangements XLSX from captured ONS HTML."""
+    """Select the current safe workbook from captured ONS dataset HTML.
 
-    candidates: set[str] = set()
+    The ONS page is ordered newest-first and intentionally retains historical
+    downloads.  Preserve that publisher order rather than treating its
+    expected release history as an ambiguous selection.
+    """
+
+    candidates: list[str] = []
     for href in _hrefs_from_html(evidence):
         url = urljoin(_ONS_BASE_URL, html.unescape(href).strip())
         if not _looks_like_hybrid_working_xlsx_url(url):
             continue
         if not _is_approved_hybrid_working_xlsx_url(url):
             raise ValueError("ONS working-arrangements XLSX URL is not approved")
-        candidates.add(_canonical_hybrid_working_xlsx_url(url))
+        canonical = _canonical_hybrid_working_xlsx_url(url)
+        if canonical not in candidates:
+            candidates.append(canonical)
     if not candidates:
         raise ValueError("no approved ONS working-arrangements XLSX was found in dataset HTML")
-    if len(candidates) != 1:
-        raise ValueError("ONS dataset HTML contains ambiguous working-arrangements XLSX links")
-    return candidates.pop()
+    return candidates[0]
 
 
 def _hrefs_from_html(evidence: bytes) -> tuple[str, ...]:
