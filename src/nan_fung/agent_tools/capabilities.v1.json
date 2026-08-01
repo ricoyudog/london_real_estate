@@ -1,0 +1,145 @@
+{
+  "schema_version": "agent_tool_capability_manifest.v1",
+  "manifest_version": "2026-08-01.v1",
+  "capabilities": [
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.bank-rate-current",
+      "status": "supported",
+      "datasource_ids": ["boe.bank_rate.iudbedr"],
+      "metric_ids": ["bank_rate_percent"],
+      "geography": {"scope": "United Kingdom"},
+      "refresh_profiles": ["bank-rate-latest"],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {
+            "datasource_id": ["boe.bank_rate.iudbedr"]
+          },
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "bank_rate_percent",
+      "numeric_value_type": "decimal_string",
+      "limitations": [
+        "This is a UK macro rate, not a direct London office rent or vacancy metric."
+      ],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.postcode-resolution",
+      "status": "partial",
+      "datasource_ids": ["ons.onspd.postcode"],
+      "metric_ids": [],
+      "geography": {"scope": "United Kingdom postcode"},
+      "refresh_profiles": ["onspd-one-postcode"],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [
+        "Reserved for hidden Phase 2 approval integration and future geography rollout."
+      ],
+      "blocked_reason": null,
+      "owner": "geography"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "london-prime-rent",
+      "status": "blocked",
+      "datasource_ids": [],
+      "metric_ids": [],
+      "geography": {"scope": "London office"},
+      "refresh_profiles": [],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [],
+      "blocked_reason": "Product coverage is not approved.",
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "london-office-vacancy",
+      "status": "blocked",
+      "datasource_ids": [],
+      "metric_ids": [],
+      "geography": {"scope": "London office"},
+      "refresh_profiles": [],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [],
+      "blocked_reason": "Product coverage is not approved.",
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk-ranked-market-news",
+      "status": "blocked",
+      "datasource_ids": [],
+      "metric_ids": [],
+      "geography": {"scope": "United Kingdom"},
+      "refresh_profiles": [],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [],
+      "blocked_reason": "Ranked news coverage is not approved.",
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "london-project-supply",
+      "status": "blocked",
+      "datasource_ids": [],
+      "metric_ids": [],
+      "geography": {"scope": "London office"},
+      "refresh_profiles": [],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [],
+      "blocked_reason": "Project supply coverage is not approved.",
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "london-broker-submarkets",
+      "status": "blocked",
+      "datasource_ids": [],
+      "metric_ids": [],
+      "geography": {"scope": "London office"},
+      "refresh_profiles": [],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [],
+      "blocked_reason": "Broker submarket coverage is not approved.",
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk-investment-transactions",
+      "status": "blocked",
+      "datasource_ids": [],
+      "metric_ids": [],
+      "geography": {"scope": "United Kingdom"},
+      "refresh_profiles": [],
+      "query_templates": {},
+      "query_disabled": true,
+      "numeric_value_field": null,
+      "numeric_value_type": null,
+      "limitations": [],
+      "blocked_reason": "Transaction coverage is not approved.",
+      "owner": "market-data"
+    }
+  ]
+}

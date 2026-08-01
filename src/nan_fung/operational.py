@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 import fcntl
 from email.utils import parsedate_to_datetime
@@ -13,6 +13,7 @@ from hashlib import sha256
 import os
 from pathlib import Path
 import threading
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping
 from zoneinfo import ZoneInfo
 
@@ -89,6 +90,26 @@ class RefreshConfirmationError(OperationalError):
     """A bounded refresh did not satisfy its required second confirmation."""
 
 
+class RefreshApprovalError(OperationalError):
+    """A host-only approval mapping is invalid or unavailable."""
+
+
+class RefreshApprovalAccessError(RefreshApprovalError):
+    """An approval is not bound to the caller's trusted host context."""
+
+
+class RefreshApprovalExpiredError(RefreshApprovalError):
+    """A durable approval mapping or its confirmation has expired."""
+
+
+class RefreshApprovalReplayError(RefreshApprovalError):
+    """A host attempted to reuse an approval with changed request semantics."""
+
+
+class ApprovalDecisionConflictError(RefreshApprovalError):
+    """A conflicting approve/deny decision followed an immutable decision."""
+
+
 _ONSPD_REFRESH_DATASOURCE_ID = "ons.onspd.postcode"
 _ONSPD_REFRESH_DAILY_LIMIT = 20
 _ONSPD_REFRESH_TIMEZONE = ZoneInfo("Europe/London")
@@ -123,6 +144,51 @@ class DurableRefreshResult:
     submitted_at: datetime
     confirmation_token: str | None = None
     confirmation_expires_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class AgentRefreshApproval:
+    """Durable host-only binding for an approval-required refresh request.
+
+    The normalized snapshot deliberately contains no confirmation token.  It
+    is sufficient for a trusted host to rebuild the original ``RefreshRequest``
+    after a facade subprocess restart.
+    """
+
+    approval_id: str
+    refresh_request_id: str
+    principal: str
+    capability_scope_id: str
+    capability_id: str
+    manifest_version: str
+    profile_version: str
+    request_fingerprint: str
+    snapshot: Mapping[str, object]
+    issued_at: datetime
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class RecoveredAgentRefreshApproval:
+    """Trusted host recovery result; token repr is deliberately suppressed."""
+
+    approval: AgentRefreshApproval
+    confirmation_token: str = field(repr=False)
+
+    @property
+    def snapshot(self) -> Mapping[str, object]:
+        return self.approval.snapshot
+
+
+@dataclass(frozen=True)
+class AgentRefreshApprovalDecision:
+    """One append-only host decision or its idempotent replay event."""
+
+    approval_id: str
+    event_id: str
+    decision: str
+    outcome: str
+    decided_at: datetime
 
 
 @dataclass(frozen=True)
@@ -2756,6 +2822,399 @@ class OperationalStore:
             raise RefreshRequestAccessError("job is not visible to this context")
         return self.get_job(job_id)
 
+    @_single_writer
+    def create_agent_refresh_approval(
+        self,
+        *,
+        refresh_request_id: str,
+        principal: str,
+        capability_scope_id: str,
+        capability_id: str,
+        manifest_version: str,
+        profile_version: str,
+        request_fingerprint: str,
+        datasource_id: str,
+        request_profile: str,
+        bounded_scope: Mapping[str, object],
+        intent: str,
+        now: datetime | None = None,
+    ) -> AgentRefreshApproval:
+        """Bind a confirmation-required request to one opaque host approval.
+
+        This is deliberately called only after a trusted broker has returned
+        ``confirmation_required``.  It reads the existing confirmation row but
+        never copies its token into the immutable approval mapping.
+        """
+
+        _require_refresh_identifier("refresh_request_id", refresh_request_id)
+        _require_refresh_identifier("principal", principal)
+        _require_agent_approval_identifier("capability_scope_id", capability_scope_id)
+        _require_agent_approval_identifier("capability_id", capability_id)
+        _require_agent_approval_identifier("manifest_version", manifest_version)
+        _require_agent_approval_identifier("profile_version", profile_version)
+        _require_refresh_digest("request_fingerprint", request_fingerprint)
+        snapshot = _agent_refresh_snapshot(
+            datasource_id=datasource_id,
+            request_profile=request_profile,
+            bounded_scope=bounded_scope,
+            intent=intent,
+        )
+        if _agent_refresh_snapshot_fingerprint(snapshot) != request_fingerprint:
+            raise RefreshApprovalReplayError(
+                "approval snapshot does not match the durable refresh request"
+            )
+        anchor = _as_utc(now)
+        if not self._is_initialized():
+            raise RefreshApprovalError("refresh confirmation is not available")
+        connection = connect_database(self.database_path)
+        try:
+            with transaction(connection):
+                confirmation = connection.execute(
+                    """
+                    SELECT request_id, principal, request_fingerprint, datasource_id,
+                           issued_at, expires_at
+                    FROM refresh_confirmation WHERE request_id = ?
+                    """,
+                    (refresh_request_id,),
+                ).fetchone()
+                if confirmation is None:
+                    raise RefreshApprovalError("refresh confirmation is not available")
+                _validate_approval_confirmation(
+                    confirmation,
+                    principal=principal,
+                    request_fingerprint=request_fingerprint,
+                    datasource_id=datasource_id,
+                    at=anchor,
+                )
+                existing = connection.execute(
+                    """
+                    SELECT approval_id, refresh_request_id, principal, capability_scope_id,
+                           capability_id, manifest_version, profile_version,
+                           request_fingerprint, request_snapshot_json, issued_at, expires_at
+                    FROM agent_refresh_approval WHERE refresh_request_id = ?
+                    """,
+                    (refresh_request_id,),
+                ).fetchone()
+                if existing is not None:
+                    approval = _agent_refresh_approval_from_row(existing)
+                    _validate_agent_refresh_approval(
+                        approval,
+                        principal=principal,
+                        capability_scope_id=capability_scope_id,
+                        capability_id=capability_id,
+                        manifest_version=manifest_version,
+                        profile_version=profile_version,
+                        request_fingerprint=request_fingerprint,
+                        at=anchor,
+                    )
+                    return approval
+
+                approval = AgentRefreshApproval(
+                    approval_id=new_id("approval"),
+                    refresh_request_id=refresh_request_id,
+                    principal=principal,
+                    capability_scope_id=capability_scope_id,
+                    capability_id=capability_id,
+                    manifest_version=manifest_version,
+                    profile_version=profile_version,
+                    request_fingerprint=request_fingerprint,
+                    snapshot=_freeze_agent_refresh_snapshot(snapshot),
+                    issued_at=_parse_timestamp(confirmation["issued_at"]),
+                    expires_at=_parse_timestamp(confirmation["expires_at"]),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO agent_refresh_approval (
+                        approval_id, refresh_request_id, principal, capability_scope_id,
+                        capability_id, manifest_version, profile_version,
+                        request_fingerprint, request_snapshot_json, issued_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        approval.approval_id,
+                        approval.refresh_request_id,
+                        approval.principal,
+                        approval.capability_scope_id,
+                        approval.capability_id,
+                        approval.manifest_version,
+                        approval.profile_version,
+                        approval.request_fingerprint,
+                        _json(snapshot),
+                        _timestamp(approval.issued_at),
+                        _timestamp(approval.expires_at),
+                    ),
+                )
+                return approval
+        finally:
+            connection.close()
+
+    def recover_agent_refresh_approval(
+        self,
+        approval_id: str,
+        *,
+        principal: str,
+        capability_scope_id: str,
+        capability_id: str,
+        manifest_version: str,
+        profile_version: str,
+        request_fingerprint: str,
+        now: datetime | None = None,
+    ) -> RecoveredAgentRefreshApproval:
+        """Recover the trusted token and original snapshot for host-only replay.
+
+        The token is retrieved only after validating the opaque approval's
+        principal, capability scope, frozen policy versions, exact request
+        fingerprint, and expiry.  This method is intentionally not imported by
+        the model-facing agent tool package.
+        """
+
+        approval = self._validated_agent_refresh_approval(
+            approval_id,
+            principal=principal,
+            capability_scope_id=capability_scope_id,
+            capability_id=capability_id,
+            manifest_version=manifest_version,
+            profile_version=profile_version,
+            request_fingerprint=request_fingerprint,
+            now=now,
+            include_token=True,
+        )
+        assert isinstance(approval, RecoveredAgentRefreshApproval)
+        return approval
+
+    def lookup_agent_refresh_approval(
+        self,
+        approval_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> AgentRefreshApproval:
+        """Load a host-only approval binding without recovering its token.
+
+        This narrow helper exists so the facade can obtain the immutable
+        identity values it must pass back into the context-checking recovery
+        and decision methods after a one-shot child restart.  It never returns
+        the confirmation token and is not exported through a model-facing
+        surface.
+        """
+
+        _require_agent_approval_identifier("approval_id", approval_id)
+        anchor = _as_utc(now)
+        if not self._is_initialized():
+            raise RefreshApprovalAccessError("approval is not available to this host context")
+        connection = connect_database(self.database_path, read_only=True)
+        try:
+            row = connection.execute(
+                """
+                SELECT approval_id, refresh_request_id, principal, capability_scope_id,
+                       capability_id, manifest_version, profile_version,
+                       request_fingerprint, request_snapshot_json, issued_at, expires_at
+                FROM agent_refresh_approval WHERE approval_id = ?
+                """,
+                (approval_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            raise RefreshApprovalAccessError("approval is not available to this host context")
+        approval = _agent_refresh_approval_from_row(row)
+        if approval.expires_at <= anchor:
+            raise RefreshApprovalExpiredError("approval has expired")
+        return approval
+
+    @_single_writer
+    def decide_agent_refresh_approval(
+        self,
+        approval_id: str,
+        *,
+        decision: str,
+        principal: str,
+        capability_scope_id: str,
+        capability_id: str,
+        manifest_version: str,
+        profile_version: str,
+        request_fingerprint: str,
+        actor_id: str,
+        now: datetime | None = None,
+    ) -> AgentRefreshApprovalDecision:
+        """Append an approve/deny event, replaying only an identical decision.
+
+        The host calls this before a broker resend.  A later retry creates a
+        ``replay`` event and can safely re-run the durable refresh submission;
+        a conflicting decision is rejected without changing earlier history.
+        """
+
+        _require_agent_approval_identifier("approval_id", approval_id)
+        if decision not in {"approve", "deny"}:
+            raise RefreshApprovalError("approval decision must be approve or deny")
+        _require_refresh_identifier("principal", principal)
+        _require_agent_approval_identifier("capability_scope_id", capability_scope_id)
+        _require_agent_approval_identifier("capability_id", capability_id)
+        _require_agent_approval_identifier("manifest_version", manifest_version)
+        _require_agent_approval_identifier("profile_version", profile_version)
+        _require_refresh_digest("request_fingerprint", request_fingerprint)
+        _require_agent_approval_identifier("actor_id", actor_id)
+        anchor = _as_utc(now)
+        if not self._is_initialized():
+            raise RefreshApprovalAccessError("approval is not available to this host context")
+        connection = connect_database(self.database_path)
+        try:
+            with transaction(connection):
+                row = connection.execute(
+                    """
+                    SELECT approval_id, refresh_request_id, principal, capability_scope_id,
+                           capability_id, manifest_version, profile_version,
+                           request_fingerprint, request_snapshot_json, issued_at, expires_at
+                    FROM agent_refresh_approval WHERE approval_id = ?
+                    """,
+                    (approval_id,),
+                ).fetchone()
+                if row is None:
+                    raise RefreshApprovalAccessError(
+                        "approval is not available to this host context"
+                    )
+                approval = _agent_refresh_approval_from_row(row)
+                _validate_agent_refresh_approval(
+                    approval,
+                    principal=principal,
+                    capability_scope_id=capability_scope_id,
+                    capability_id=capability_id,
+                    manifest_version=manifest_version,
+                    profile_version=profile_version,
+                    request_fingerprint=request_fingerprint,
+                    at=anchor,
+                )
+                prior = connection.execute(
+                    """
+                    SELECT decision FROM agent_refresh_approval_event
+                    WHERE approval_id = ? AND event_type = 'decision'
+                    """,
+                    (approval_id,),
+                ).fetchone()
+                if prior is not None and prior["decision"] != decision:
+                    raise ApprovalDecisionConflictError(
+                        "approval already has a conflicting immutable decision"
+                    )
+                outcome = "replay" if prior is not None else "decision"
+                sequence = connection.execute(
+                    """
+                    SELECT COALESCE(MAX(event_seq), 0) + 1 AS next_event_seq
+                    FROM agent_refresh_approval_event WHERE approval_id = ?
+                    """,
+                    (approval_id,),
+                ).fetchone()["next_event_seq"]
+                event_id = new_id("approval_event")
+                connection.execute(
+                    """
+                    INSERT INTO agent_refresh_approval_event (
+                        event_id, approval_id, event_seq, event_type, decision,
+                        actor_type, actor_id, details_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, 'host', ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        approval_id,
+                        sequence,
+                        outcome,
+                        decision,
+                        actor_id,
+                        _json({"refresh_request_id": approval.refresh_request_id}),
+                        _timestamp(anchor),
+                    ),
+                )
+                return AgentRefreshApprovalDecision(
+                    approval_id=approval_id,
+                    event_id=event_id,
+                    decision=decision,
+                    outcome="replayed" if outcome == "replay" else "recorded",
+                    decided_at=anchor,
+                )
+        finally:
+            connection.close()
+
+    def _validated_agent_refresh_approval(
+        self,
+        approval_id: str,
+        *,
+        principal: str,
+        capability_scope_id: str,
+        capability_id: str,
+        manifest_version: str,
+        profile_version: str,
+        request_fingerprint: str,
+        now: datetime | None,
+        include_token: bool,
+    ) -> AgentRefreshApproval | RecoveredAgentRefreshApproval:
+        _require_agent_approval_identifier("approval_id", approval_id)
+        _require_refresh_identifier("principal", principal)
+        _require_agent_approval_identifier("capability_scope_id", capability_scope_id)
+        _require_agent_approval_identifier("capability_id", capability_id)
+        _require_agent_approval_identifier("manifest_version", manifest_version)
+        _require_agent_approval_identifier("profile_version", profile_version)
+        _require_refresh_digest("request_fingerprint", request_fingerprint)
+        anchor = _as_utc(now)
+        if not self._is_initialized():
+            raise RefreshApprovalAccessError("approval is not available to this host context")
+        connection = connect_database(self.database_path, read_only=True)
+        try:
+            row = connection.execute(
+                """
+                SELECT approval.approval_id, approval.refresh_request_id,
+                       approval.principal, approval.capability_scope_id,
+                       approval.capability_id, approval.manifest_version,
+                       approval.profile_version, approval.request_fingerprint,
+                       approval.request_snapshot_json, approval.issued_at,
+                       approval.expires_at, confirmation.confirmation_token,
+                       confirmation.principal AS confirmation_principal,
+                       confirmation.request_fingerprint AS confirmation_fingerprint,
+                       confirmation.datasource_id AS confirmation_datasource_id,
+                       confirmation.issued_at AS confirmation_issued_at,
+                       confirmation.expires_at AS confirmation_expires_at
+                FROM agent_refresh_approval AS approval
+                JOIN refresh_confirmation AS confirmation
+                  ON confirmation.request_id = approval.refresh_request_id
+                WHERE approval.approval_id = ?
+                """,
+                (approval_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            raise RefreshApprovalAccessError("approval is not available to this host context")
+        approval = _agent_refresh_approval_from_row(row)
+        _validate_agent_refresh_approval(
+            approval,
+            principal=principal,
+            capability_scope_id=capability_scope_id,
+            capability_id=capability_id,
+            manifest_version=manifest_version,
+            profile_version=profile_version,
+            request_fingerprint=request_fingerprint,
+            at=anchor,
+        )
+        snapshot = approval.snapshot
+        _validate_approval_confirmation(
+            row,
+            principal=approval.principal,
+            request_fingerprint=approval.request_fingerprint,
+            datasource_id=snapshot["datasource_id"],
+            at=anchor,
+            principal_key="confirmation_principal",
+            fingerprint_key="confirmation_fingerprint",
+            datasource_key="confirmation_datasource_id",
+            expires_key="confirmation_expires_at",
+        )
+        if (
+            row["confirmation_issued_at"] != _timestamp(approval.issued_at)
+            or row["confirmation_expires_at"] != _timestamp(approval.expires_at)
+        ):
+            raise RefreshApprovalReplayError("approval confirmation metadata changed")
+        if not include_token:
+            return approval
+        token = row["confirmation_token"]
+        _require_optional_refresh_confirmation_token(token)
+        assert isinstance(token, str)
+        return RecoveredAgentRefreshApproval(approval=approval, confirmation_token=token)
+
     def _refresh_request_by_id(self, request_id: str) -> object | None:
         connection = connect_database(self.database_path, read_only=True)
         try:
@@ -4192,6 +4651,182 @@ def _thaw(value: Mapping[str, Any] | Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return {str(key): _thaw(item) if isinstance(item, Mapping) else item for key, item in value.items()}
     return dict(value) if value else {}
+
+
+def _require_agent_approval_identifier(name: str, value: object) -> None:
+    if not isinstance(value, str) or not value or len(value) > 256:
+        raise RefreshApprovalError(
+            f"{name} must be a non-empty string of at most 256 characters"
+        )
+
+
+def _agent_refresh_snapshot(
+    *,
+    datasource_id: object,
+    request_profile: object,
+    bounded_scope: Mapping[str, object],
+    intent: object,
+) -> dict[str, object]:
+    """Build the canonical JSON snapshot shared by approval and broker replay."""
+
+    _require_agent_approval_identifier("datasource_id", datasource_id)
+    _require_agent_approval_identifier("request_profile", request_profile)
+    if not isinstance(intent, str) or not intent or len(intent) > 240:
+        raise RefreshApprovalError("approval intent must be between 1 and 240 characters")
+    if not isinstance(bounded_scope, Mapping) or len(bounded_scope) > 100:
+        raise RefreshApprovalError("approval scope must be a bounded mapping")
+    normalized_scope: dict[str, list[str]] = {}
+    total_values = 0
+    for key, raw_values in bounded_scope.items():
+        _require_agent_approval_identifier("approval scope key", key)
+        if isinstance(raw_values, str):
+            values = (raw_values,)
+        elif isinstance(raw_values, (tuple, list)) and all(
+            isinstance(value, str) for value in raw_values
+        ):
+            values = tuple(raw_values)
+        else:
+            raise RefreshApprovalError("approval scope values must contain strings")
+        if not values or len(values) > 100:
+            raise RefreshApprovalError("approval scope values are invalid")
+        if any(not value or len(value) > 256 for value in values):
+            raise RefreshApprovalError("approval scope values are invalid")
+        total_values += len(values)
+        if total_values > 100:
+            raise RefreshApprovalError("approval scope has too many values")
+        normalized_scope[key] = list(values)
+    return {
+        "datasource_id": datasource_id,
+        "request_profile": request_profile,
+        "bounded_scope": {
+            key: normalized_scope[key] for key in sorted(normalized_scope)
+        },
+        "intent": intent,
+    }
+
+
+def _agent_refresh_snapshot_fingerprint(snapshot: Mapping[str, object]) -> str:
+    return sha256(_json(snapshot).encode("utf-8")).hexdigest()
+
+
+def _freeze_agent_refresh_snapshot(snapshot: Mapping[str, object]) -> Mapping[str, object]:
+    scope = snapshot["bounded_scope"]
+    if not isinstance(scope, Mapping):
+        raise RefreshApprovalError("approval snapshot scope is invalid")
+    return MappingProxyType(
+        {
+            "datasource_id": snapshot["datasource_id"],
+            "request_profile": snapshot["request_profile"],
+            "bounded_scope": MappingProxyType(
+                {
+                    key: tuple(values)
+                    for key, values in scope.items()
+                    if isinstance(key, str) and isinstance(values, list)
+                }
+            ),
+            "intent": snapshot["intent"],
+        }
+    )
+
+
+def _agent_refresh_approval_from_row(row: object) -> AgentRefreshApproval:
+    try:
+        raw_snapshot = json.loads(row["request_snapshot_json"])  # type: ignore[index]
+        if not isinstance(raw_snapshot, Mapping) or set(raw_snapshot) != {
+            "datasource_id",
+            "request_profile",
+            "bounded_scope",
+            "intent",
+        }:
+            raise RefreshApprovalError("durable approval snapshot is invalid")
+        snapshot = _agent_refresh_snapshot(
+            datasource_id=raw_snapshot["datasource_id"],
+            request_profile=raw_snapshot["request_profile"],
+            bounded_scope=raw_snapshot["bounded_scope"],
+            intent=raw_snapshot["intent"],
+        )
+        approval = AgentRefreshApproval(
+            approval_id=row["approval_id"],  # type: ignore[index]
+            refresh_request_id=row["refresh_request_id"],  # type: ignore[index]
+            principal=row["principal"],  # type: ignore[index]
+            capability_scope_id=row["capability_scope_id"],  # type: ignore[index]
+            capability_id=row["capability_id"],  # type: ignore[index]
+            manifest_version=row["manifest_version"],  # type: ignore[index]
+            profile_version=row["profile_version"],  # type: ignore[index]
+            request_fingerprint=row["request_fingerprint"],  # type: ignore[index]
+            snapshot=_freeze_agent_refresh_snapshot(snapshot),
+            issued_at=_parse_timestamp(row["issued_at"]),  # type: ignore[index]
+            expires_at=_parse_timestamp(row["expires_at"]),  # type: ignore[index]
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        if isinstance(error, RefreshApprovalError):
+            raise
+        raise RefreshApprovalError("durable approval metadata is invalid") from error
+    _require_agent_approval_identifier("approval_id", approval.approval_id)
+    _require_refresh_identifier("refresh_request_id", approval.refresh_request_id)
+    _require_refresh_identifier("principal", approval.principal)
+    _require_agent_approval_identifier("capability_scope_id", approval.capability_scope_id)
+    _require_agent_approval_identifier("capability_id", approval.capability_id)
+    _require_agent_approval_identifier("manifest_version", approval.manifest_version)
+    _require_agent_approval_identifier("profile_version", approval.profile_version)
+    _require_refresh_digest("request_fingerprint", approval.request_fingerprint)
+    if _agent_refresh_snapshot_fingerprint(snapshot) != approval.request_fingerprint:
+        raise RefreshApprovalReplayError("durable approval snapshot fingerprint is invalid")
+    return approval
+
+
+def _validate_agent_refresh_approval(
+    approval: AgentRefreshApproval,
+    *,
+    principal: str,
+    capability_scope_id: str,
+    capability_id: str,
+    manifest_version: str,
+    profile_version: str,
+    request_fingerprint: str,
+    at: datetime,
+) -> None:
+    if (
+        approval.principal != principal
+        or approval.capability_scope_id != capability_scope_id
+    ):
+        raise RefreshApprovalAccessError("approval is not available to this host context")
+    if (
+        approval.capability_id != capability_id
+        or approval.manifest_version != manifest_version
+        or approval.profile_version != profile_version
+        or approval.request_fingerprint != request_fingerprint
+    ):
+        raise RefreshApprovalReplayError("approval policy or request identity changed")
+    if approval.expires_at <= at:
+        raise RefreshApprovalExpiredError("approval expired; create a new refresh request")
+
+
+def _validate_approval_confirmation(
+    row: object,
+    *,
+    principal: str,
+    request_fingerprint: str,
+    datasource_id: object,
+    at: datetime,
+    principal_key: str = "principal",
+    fingerprint_key: str = "request_fingerprint",
+    datasource_key: str = "datasource_id",
+    expires_key: str = "expires_at",
+) -> None:
+    try:
+        same_identity = (
+            row[principal_key] == principal  # type: ignore[index]
+            and row[fingerprint_key] == request_fingerprint  # type: ignore[index]
+            and row[datasource_key] == datasource_id  # type: ignore[index]
+        )
+        expires_at = _parse_timestamp(row[expires_key])  # type: ignore[index]
+    except (KeyError, TypeError, ValueError) as error:
+        raise RefreshApprovalError("refresh confirmation metadata is invalid") from error
+    if not same_identity:
+        raise RefreshApprovalReplayError("refresh confirmation identity changed")
+    if expires_at <= at:
+        raise RefreshApprovalExpiredError("approval expired; create a new refresh request")
 
 
 def _require_refresh_identifier(name: str, value: object) -> None:

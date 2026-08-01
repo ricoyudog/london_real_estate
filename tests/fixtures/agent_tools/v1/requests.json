@@ -1,0 +1,88 @@
+{
+  "describe_market_data": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_describe_001",
+    "arguments": {},
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_describe_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  },
+  "query_bank_rate": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_query_001",
+    "arguments": {
+      "capability_id": "uk.bank-rate-current",
+      "query_kind": "metrics",
+      "filters": {},
+      "limit": 2
+    },
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_query_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  },
+  "request_bank_rate_refresh": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_refresh_001",
+    "arguments": {
+      "capability_id": "uk.bank-rate-current",
+      "datasource_id": "boe.bank_rate.iudbedr",
+      "request_profile": "bank-rate-latest",
+      "bounded_scope": {},
+      "intent": "user_requested_latest"
+    },
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_refresh_001",
+      "refresh_request_id": "refresh_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  },
+  "get_citation_metadata": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_citation_001",
+    "arguments": {
+      "citation_refs": ["h1.example-citation-handle.signature"]
+    },
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_citation_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  },
+  "get_refresh_status": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_refresh_status_001",
+    "arguments": {
+      "job_ref": "h1.example-job-handle.signature"
+    },
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_status_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  }
+}

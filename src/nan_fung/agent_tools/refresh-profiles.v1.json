@@ -1,0 +1,36 @@
+{
+  "schema_version": "agent_tool_refresh_profiles.v1",
+  "catalog_version": "2026-08-01.v1",
+  "profiles": [
+    {
+      "schema_version": "agent_tool_refresh_profile.v1",
+      "profile_id": "bank-rate-latest",
+      "datasource_id": "boe.bank_rate.iudbedr",
+      "capability_ids": ["uk.bank-rate-current"],
+      "allowed_scope_keys": [],
+      "required_scope_keys": [],
+      "single_value_scope_keys": [],
+      "max_scope_values": 1,
+      "definition_version": 1,
+      "effective_lane": "production_ingestion",
+      "promotion_policy": "registry_selected",
+      "poll_after_seconds": 2,
+      "freshness_precheck": "canonical_bank_rate"
+    },
+    {
+      "schema_version": "agent_tool_refresh_profile.v1",
+      "profile_id": "onspd-one-postcode",
+      "datasource_id": "ons.onspd.postcode",
+      "capability_ids": ["uk.postcode-resolution"],
+      "allowed_scope_keys": ["postcode"],
+      "required_scope_keys": ["postcode"],
+      "single_value_scope_keys": ["postcode"],
+      "max_scope_values": 1,
+      "definition_version": 1,
+      "effective_lane": "production_ingestion",
+      "promotion_policy": "registry_selected",
+      "poll_after_seconds": 2,
+      "freshness_precheck": null
+    }
+  ]
+}

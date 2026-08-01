@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nan-fung.local/schemas/agent_tool_request.v1.schema.json",
+  "title": "Agent tool request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "arguments", "host_context"],
+  "properties": {
+    "schema_version": {"const": "agent_tool_request.v1"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "arguments": {"type": "object"},
+    "host_context": {"$ref": "#/$defs/host_context"}
+  },
+  "$defs": {
+    "host_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal",
+        "capability_scope_id",
+        "turn_id",
+        "tool_call_id",
+        "allowed_access_classes",
+        "allowed_capability_ids",
+        "allowed_refresh_profiles"
+      ],
+      "properties": {
+        "principal": {"type": "string", "minLength": 1, "maxLength": 256},
+        "capability_scope_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "turn_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "tool_call_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "refresh_request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "allowed_access_classes": {"$ref": "#/$defs/non_empty_strings"},
+        "allowed_capability_ids": {"$ref": "#/$defs/strings"},
+        "allowed_refresh_profiles": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "strings": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 256},
+      "uniqueItems": true
+    },
+    "non_empty_strings": {
+      "allOf": [
+        {"$ref": "#/$defs/strings"},
+        {"minItems": 1}
+      ]
+    }
+  }
+}

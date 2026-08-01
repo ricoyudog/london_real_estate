@@ -1,0 +1,30 @@
+{
+  "ok": {
+    "schema_version": "agent_tool_result.v1",
+    "request_id": "call_query_001",
+    "status": "ok",
+    "data": {"records": []},
+    "warnings": [],
+    "error": null
+  },
+  "partial": {
+    "schema_version": "agent_tool_result.v1",
+    "request_id": "call_query_001",
+    "status": "partial",
+    "data": {"records": [], "cursor_ref": "h1.example-cursor.signature"},
+    "warnings": ["response_truncated_to_protocol_limit"],
+    "error": null
+  },
+  "access_denied": {
+    "schema_version": "agent_tool_result.v1",
+    "request_id": "call_query_001",
+    "status": "error",
+    "data": null,
+    "warnings": [],
+    "error": {
+      "code": "ACCESS_DENIED",
+      "message": "Access to this capability is denied.",
+      "retryable": false
+    }
+  }
+}

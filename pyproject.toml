@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 cre = "nan_fung.cli:main"
+nan-fung-agent-tools = "nan_fung.agent_tools.cli:main"
 
 [dependency-groups]
 dev = [
@@ -23,7 +24,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nan_fung"]
-include = ["src/nan_fung/storage/migrations/*.sql"]
+include = [
+    "src/nan_fung/storage/migrations/*.sql",
+    "src/nan_fung/agent_tools/*.json",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -1,0 +1,49 @@
+{
+  "unknown_top_level": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_invalid_001",
+    "arguments": {},
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_invalid_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    },
+    "tool": "query_market_data"
+  },
+  "wrong_schema_version": {
+    "schema_version": "agent_tool_request.v2",
+    "request_id": "call_invalid_002",
+    "arguments": {},
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_invalid_002",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  },
+  "argument_policy_injection": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_invalid_003",
+    "arguments": {
+      "capability_id": "uk.bank-rate-current",
+      "principal": "operator",
+      "url": "https://example.test/private"
+    },
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "toolcall_invalid_003",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.bank-rate-current"],
+      "allowed_refresh_profiles": ["bank-rate-latest"]
+    }
+  }
+}

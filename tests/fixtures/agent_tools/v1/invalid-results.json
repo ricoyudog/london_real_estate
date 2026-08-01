@@ -1,0 +1,24 @@
+{
+  "unknown_result_field": {
+    "schema_version": "agent_tool_result.v1",
+    "request_id": "call_query_001",
+    "status": "ok",
+    "data": {},
+    "warnings": [],
+    "error": null,
+    "debug": "must not cross the process boundary"
+  },
+  "unsafe_error_shape": {
+    "schema_version": "agent_tool_result.v1",
+    "request_id": "call_query_001",
+    "status": "error",
+    "data": null,
+    "warnings": [],
+    "error": {
+      "code": "ACCESS_DENIED",
+      "message": "Access to this capability is denied.",
+      "retryable": false,
+      "stack": "must not cross the process boundary"
+    }
+  }
+}

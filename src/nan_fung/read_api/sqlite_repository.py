@@ -11,6 +11,7 @@ from typing import Any
 from nan_fung.storage.db import connect_database
 
 from .access import ReadContext
+from .citation import CitationProjection, sqlite_citation_projection
 from .contracts import ReadPage, ReadQuery, ReadRecord, normalise_utc, utc_timestamp
 
 
@@ -48,6 +49,22 @@ class SQLiteReadRepository:
         if expected_type is None:
             return records
         return tuple(record for record in records if record.record_type == expected_type)
+
+    def citation_projection(
+        self,
+        context: ReadContext,
+        *,
+        anchor_as_of: datetime,
+        observation_ids: Iterable[str],
+    ) -> Iterable[CitationProjection]:
+        """Resolve safe evidence metadata for the exact canonical as-of selection."""
+
+        return sqlite_citation_projection(
+            self._database_path,
+            context,
+            anchor_as_of=anchor_as_of,
+            observation_ids=observation_ids,
+        )
 
     def query_result(
         self,

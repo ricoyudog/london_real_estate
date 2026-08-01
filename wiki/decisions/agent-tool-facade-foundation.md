@@ -2,14 +2,16 @@
 type: wiki
 updated: 2026-08-01
 status: accepted
+implementation_status: complete
 source: "[[wiki/research/agent-skill-and-tool/skill-and-tool-design|Agent Runtime, Skill and Tool Research]]"
 tags: [agent, tools, facade, contracts, datasource]
 ---
 
 # Agent Tool Facade Foundation
 
-> **Implementation state: planned.** `accepted` 表示本設計已採納，不表示已完成
-> 工程交付。實作證據必須另行驗證及記錄。
+> **Implementation state: complete (2026-08-01).** `accepted` 表示本設計已採納；
+> 本文件末段記錄本次 Phase 1 工程交付與 exit-gate 證據。Pi Runtime integration
+> 仍維持 deferred。
 
 ## Decision
 
@@ -404,6 +406,33 @@ canonical production coverage。
 Exit gate是：非Python consumer只依版本化schemas和fixtures即可安全整合，且
 registered Agent tool surface無法取得operator、raw evidence、collector、
 non-canonical result或canonical writer capability。
+
+## 實作證據（2026-08-01）
+
+- 新增 `nan_fung.agent_tools`：strict UTF-8 JSON wire parser/serializer、stable
+  error/exit mapping、`AgentToolFacade`、runtime-scoped HMAC handles、packaged
+  capability/profile loaders、`AgentToolHost`/`AgentToolSession` 與獨立
+  `nan-fung-agent-tools <tool-name>` binary。Host 僅以 inherited FD 3 傳遞每次
+  runtime boot 的 256-bit key；launcher 使用 `shell=False`、獨立 process group、
+  10-second timeout/cancel 和 bounded stdout/stderr。
+- 新增 read-side `citation_projection_v1`、access-aware SQLite exact lineage
+  projection，以及 `0008_agent_tool_approval.sql`。approval mapping 和 event
+  皆為 immutable/append-only；Facade 不回傳 confirmation token、raw evidence、
+  CAS path、headers 或 artifact URI。
+- Bank Rate launch capability 固定為 canonical `metrics`、
+  `boe.bank_rate.iudbedr`、`bank_rate_percent` decimal-string、UK scope；
+  `uk.postcode-resolution` 維持 query-disabled partial approval integration，其他
+  規劃外 coverage 維持 blocked。
+- Versioned JSON schemas、valid/invalid request/result fixtures 與語言無關 JSON
+  result fixtures 位於 `src/nan_fung/agent_tools/` 和
+  `tests/fixtures/agent_tools/v1/`；tests 覆蓋 strict protocol、handle replay、
+  prefix pagination、citation lineage、refresh/approval semantics、FD 3、crash、
+  timeout、cancel 和 process-group cleanup。
+- 驗證完成：`uv run pytest -q` 為 **349 passed, 15 deselected**；
+  `uv run python -m compileall -q src` 與 `git diff --check` 通過；`uv build`
+  成功。在新的 temporary venv 安裝 wheel 後，以 inherited-FD host harness 成功
+  呼叫 `nan-fung-agent-tools`，並確認 packaged schemas/assets/migration 和 binary
+  存在、`cre` 不能作為該 binary selector。
 
 ## References
 

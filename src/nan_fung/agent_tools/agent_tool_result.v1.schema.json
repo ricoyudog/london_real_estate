@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nan-fung.local/schemas/agent_tool_result.v1.schema.json",
+  "title": "Agent tool result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "status", "data", "warnings", "error"],
+  "properties": {
+    "schema_version": {"const": "agent_tool_result.v1"},
+    "request_id": {"type": ["string", "null"], "maxLength": 256},
+    "status": {"enum": ["ok", "partial", "error"]},
+    "data": {},
+    "warnings": {
+      "type": "array",
+      "items": {"anyOf": [{"type": "string"}, {"type": "object"}]}
+    },
+    "error": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"type": "string"},
+            "message": {"type": "string"},
+            "retryable": {"type": "boolean"}
+          }
+        }
+      ]
+    }
+  }
+}
