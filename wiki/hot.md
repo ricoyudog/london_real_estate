@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 tags: [hot, entry]
 pinned: true
 ---
@@ -10,20 +10,29 @@ pinned: true
 > ~500 words | Hard cap 600 words | Updated every session | First entry point for humans and AI
 
 ## Active Changes
-- (No active change yet — run `/corgi-gh-propose` since tracking provider is GitHub)
+- Datasource operational system implemented on `feat/datasource`; remaining work is
+  source-governance approval and product-coverage delivery, not another ad-hoc scraper.
 
 ## Recent Decisions
-- Initialised git + memory structure
-- Wired remote `origin` → `ricoyudog/london_real_estate`, pushed initial commit `1d4af7f`
-- Confirmed Python stack: pure stdlib HTTP, uv + hatchling, pytest `live` marker convention
+- SQLite + immutable CAS evidence is the canonical datasource store.
+- Production ingestion is bounded by registry policy and lane promotion.
+- ONSPD is one-postcode on-demand only and requires an explicit human-approved
+  retention deadline before live capture.
 
 ## Architecture Pulse
-- **Stable**: `src/nan_fung/datasources/` — 8 modules returning `SourceResult` envelope via `common.py` helpers (`get_bytes`, `get_json`, `source_result`)
-- **Evolving**: 7 domain skills under `skills/`; 13 datasource research notes under `wiki/research/datasource/`
-- **Legacy**: None identified
+- **Stable**: durable jobs, CAS evidence, isolated parsing, SQLite canonical
+  reads, bounded refresh and deterministic projections.
+- **Operational**: Bank Rate, ONS/Nomis macro, VOA, ONS hybrid-working and MHCLG
+  EPC workflows have real evidence-to-canonical validation.
+- **Policy-gated**: ONSPD retention approval; PLD, restricted content, BNP,
+  Rightmove and GLA workflows remain blocked or manual review.
 
 ## Recent Pitfalls
 - `.codegraph` symlink staged on first `git add -A` despite gitignore — see [[memory/pitfalls]] when added
 
 ## Recently Shipped
-- Initial commit (71 files) — full Python codebase, tests, skills, wiki research notes
+- `1e3e7b4` durable ingestion foundation
+- `b4291f0` source adapters and daemon supervisor
+- `b8453f8` operator APIs, projections and delivery controls
+- `0511da9` live Bank Rate canonical-persistence test
+- `a20738e` current official file-release support
