@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 import fcntl
 from email.utils import parsedate_to_datetime
 from functools import wraps
@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import threading
 from typing import Any, Callable, Iterable, Iterator, Mapping
+from zoneinfo import ZoneInfo
 
 from nan_fung.ingestion.canonical import (
     canonical_json,
@@ -84,6 +85,16 @@ class RefreshRequestReplayError(OperationalError):
     """A durable request ID was reused with different request semantics."""
 
 
+class RefreshConfirmationError(OperationalError):
+    """A bounded refresh did not satisfy its required second confirmation."""
+
+
+_ONSPD_REFRESH_DATASOURCE_ID = "ons.onspd.postcode"
+_ONSPD_REFRESH_DAILY_LIMIT = 20
+_ONSPD_REFRESH_TIMEZONE = ZoneInfo("Europe/London")
+_REFRESH_CONFIRMATION_TTL = timedelta(minutes=10)
+
+
 def _single_writer(method: Callable[..., Any]) -> Callable[..., Any]:
     """Keep every OperationalStore mutation under its re-entrant writer lease."""
 
@@ -106,10 +117,12 @@ class EnqueueResult:
 class DurableRefreshResult:
     """Persisted refresh submission identity returned to the trusted broker."""
 
-    job_id: str
+    job_id: str | None
     disposition: str
     initial_state: str
     submitted_at: datetime
+    confirmation_token: str | None = None
+    confirmation_expires_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -2569,6 +2582,7 @@ class OperationalStore:
         intent: str,
         submitted_at: datetime,
         cooldown_until: datetime,
+        confirmation_token: str | None = None,
     ) -> DurableRefreshResult:
         """Durably bind one bounded agent refresh to its workflow job.
 
@@ -2584,6 +2598,11 @@ class OperationalStore:
         _require_refresh_digest("dedupe_key", dedupe_key)
         if not request_profile or not intent:
             raise OperationalError("refresh profile and intent are required")
+        _require_optional_refresh_confirmation_token(confirmation_token)
+        if confirmation_token is not None and datasource_id != _ONSPD_REFRESH_DATASOURCE_ID:
+            raise RefreshConfirmationError(
+                "confirmation is only supported for the ONSPD refresh tool"
+            )
         anchor = _as_utc(submitted_at)
         cooldown = _as_utc(cooldown_until)
         if cooldown < anchor:
@@ -2600,6 +2619,16 @@ class OperationalStore:
                 existing,
                 principal=principal,
                 request_fingerprint=request_fingerprint,
+            )
+
+        pending_confirmation = self._refresh_confirmation_by_request_id(request_id)
+        if pending_confirmation is not None:
+            self._validate_refresh_confirmation_identity(
+                pending_confirmation,
+                principal=principal,
+                request_fingerprint=request_fingerprint,
+                datasource_id=datasource_id,
+                definition_version=definition_version,
             )
 
         recovered = self._refresh_job_by_request_id(request_id)
@@ -2644,6 +2673,19 @@ class OperationalStore:
                 submitted_at=anchor,
                 cooldown_until=_parse_timestamp(prior["cooldown_until"]),
             )
+
+        confirmation = self._onspd_refresh_confirmation(
+            request_id=request_id,
+            principal=principal,
+            request_fingerprint=request_fingerprint,
+            datasource_id=datasource_id,
+            definition_version=definition_version,
+            submitted_at=anchor,
+            confirmation_token=confirmation_token,
+            pending=pending_confirmation,
+        )
+        if confirmation is not None:
+            return confirmation
 
         control = {
             "principal": principal,
@@ -2727,6 +2769,205 @@ class OperationalStore:
             ).fetchone()
         finally:
             connection.close()
+
+    def _refresh_confirmation_by_request_id(self, request_id: str) -> object | None:
+        connection = connect_database(self.database_path, read_only=True)
+        try:
+            return connection.execute(
+                """
+                SELECT confirmation_token, request_id, principal, request_fingerprint,
+                       datasource_id, definition_version, issued_at, expires_at
+                FROM refresh_confirmation WHERE request_id = ?
+                """,
+                (request_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+
+    def _onspd_refresh_confirmation(
+        self,
+        *,
+        request_id: str,
+        principal: str,
+        request_fingerprint: str,
+        datasource_id: str,
+        definition_version: int,
+        submitted_at: datetime,
+        confirmation_token: str | None,
+        pending: object | None,
+    ) -> DurableRefreshResult | None:
+        """Enforce the competition ONSPD daily cap before creating a job.
+
+        Only a new agent refresh job consumes quota.  Idempotent replays and
+        cooldown deduplications have already returned above, so they cannot
+        turn a harmless retry into an extra network-bound operation.
+        """
+
+        if datasource_id != _ONSPD_REFRESH_DATASOURCE_ID:
+            return None
+        if self._refresh_jobs_in_london_day(submitted_at) < _ONSPD_REFRESH_DAILY_LIMIT:
+            if confirmation_token is not None:
+                raise RefreshConfirmationError(
+                    "confirmation is not required while the ONSPD daily quota remains"
+                )
+            return None
+        if confirmation_token is None:
+            return self._issue_refresh_confirmation(
+                request_id=request_id,
+                principal=principal,
+                request_fingerprint=request_fingerprint,
+                datasource_id=datasource_id,
+                definition_version=definition_version,
+                submitted_at=submitted_at,
+                pending=pending,
+            )
+        if pending is None:
+            raise RefreshConfirmationError("refresh confirmation is unknown")
+        self._validate_refresh_confirmation(
+            pending,
+            confirmation_token=confirmation_token,
+            submitted_at=submitted_at,
+        )
+        return None
+
+    def _refresh_jobs_in_london_day(self, submitted_at: datetime) -> int:
+        day_start, day_end = _london_day_window(submitted_at)
+        connection = connect_database(self.database_path, read_only=True)
+        try:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS job_count
+                FROM workflow_job
+                WHERE datasource_id = ?
+                  AND trigger = 'agent_request'
+                  AND created_at >= ?
+                  AND created_at < ?
+                """,
+                (
+                    _ONSPD_REFRESH_DATASOURCE_ID,
+                    _timestamp(day_start),
+                    _timestamp(day_end),
+                ),
+            ).fetchone()
+        finally:
+            connection.close()
+        assert row is not None
+        return int(row["job_count"])
+
+    def _issue_refresh_confirmation(
+        self,
+        *,
+        request_id: str,
+        principal: str,
+        request_fingerprint: str,
+        datasource_id: str,
+        definition_version: int,
+        submitted_at: datetime,
+        pending: object | None,
+    ) -> DurableRefreshResult:
+        if pending is not None:
+            expires_at = _parse_timestamp(pending["expires_at"])  # type: ignore[index]
+            if expires_at <= submitted_at:
+                raise RefreshConfirmationError(
+                    "refresh confirmation expired; create a new request"
+                )
+            return DurableRefreshResult(
+                None,
+                "confirmation_required",
+                "confirmation_required",
+                _parse_timestamp(pending["issued_at"]),  # type: ignore[index]
+                pending["confirmation_token"],  # type: ignore[index]
+                expires_at,
+            )
+        issued_at = submitted_at
+        expires_at = issued_at + _REFRESH_CONFIRMATION_TTL
+        token = new_id("refresh_confirmation")
+        day_start, _ = _london_day_window(issued_at)
+        connection = connect_database(self.database_path)
+        try:
+            with transaction(connection):
+                connection.execute(
+                    """
+                    INSERT INTO refresh_confirmation (
+                        confirmation_token, request_id, principal, request_fingerprint,
+                        datasource_id, definition_version, day_start_at, issued_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        token,
+                        request_id,
+                        principal,
+                        request_fingerprint,
+                        datasource_id,
+                        definition_version,
+                        _timestamp(day_start),
+                        _timestamp(issued_at),
+                        _timestamp(expires_at),
+                    ),
+                )
+                self._audit(
+                    connection,
+                    actor_type="agent",
+                    actor_id=principal,
+                    action="refresh_confirmation_issued",
+                    target_type="refresh_confirmation",
+                    target_id=request_id,
+                    details={
+                        "datasource_id": datasource_id,
+                        "request_id": request_id,
+                        "daily_limit": _ONSPD_REFRESH_DAILY_LIMIT,
+                    },
+                    at=_timestamp(issued_at),
+                )
+        finally:
+            connection.close()
+        return DurableRefreshResult(
+            None,
+            "confirmation_required",
+            "confirmation_required",
+            issued_at,
+            token,
+            expires_at,
+        )
+
+    @staticmethod
+    def _validate_refresh_confirmation_identity(
+        row: object,
+        *,
+        principal: str,
+        request_fingerprint: str,
+        datasource_id: str,
+        definition_version: int,
+    ) -> None:
+        if row["principal"] != principal:  # type: ignore[index]
+            raise RefreshRequestAccessError(
+                "request_instance_id belongs to another principal"
+            )
+        if row["request_fingerprint"] != request_fingerprint:  # type: ignore[index]
+            raise RefreshRequestReplayError(
+                "request_instance_id was reused for a different request"
+            )
+        if (
+            row["datasource_id"] != datasource_id  # type: ignore[index]
+            or row["definition_version"] != definition_version  # type: ignore[index]
+        ):
+            raise RefreshRequestReplayError(
+                "request_instance_id was reused for a different datasource"
+            )
+
+    @staticmethod
+    def _validate_refresh_confirmation(
+        row: object,
+        *,
+        confirmation_token: str,
+        submitted_at: datetime,
+    ) -> None:
+        if row["confirmation_token"] != confirmation_token:  # type: ignore[index]
+            raise RefreshConfirmationError("refresh confirmation is invalid")
+        if _parse_timestamp(row["expires_at"]) <= submitted_at:  # type: ignore[index]
+            raise RefreshConfirmationError(
+                "refresh confirmation expired; create a new request"
+            )
 
     def _refresh_job_by_request_id(self, request_id: str) -> object | None:
         connection = connect_database(self.database_path, read_only=True)
@@ -3823,6 +4064,14 @@ def _as_utc(value: datetime | None = None) -> datetime:
     return candidate.astimezone(UTC)
 
 
+def _london_day_window(value: datetime) -> tuple[datetime, datetime]:
+    """Return the UTC bounds for the London calendar day containing ``value``."""
+
+    local = _as_utc(value).astimezone(_ONSPD_REFRESH_TIMEZONE)
+    day_start = datetime.combine(local.date(), time.min, tzinfo=_ONSPD_REFRESH_TIMEZONE)
+    return day_start.astimezone(UTC), (day_start + timedelta(days=1)).astimezone(UTC)
+
+
 def _rate_limit_group(host: str) -> str:
     group = host.strip().rstrip(".").lower() if isinstance(host, str) else ""
     if not group or any(character.isspace() or character in "/:@?#[\\]" for character in group):
@@ -3957,6 +4206,15 @@ def _require_refresh_digest(name: str, value: object) -> None:
         or any(character not in "0123456789abcdef" for character in value)
     ):
         raise OperationalError(f"{name} must be a SHA-256 hex digest")
+
+
+def _require_optional_refresh_confirmation_token(value: object) -> None:
+    if value is not None and (
+        not isinstance(value, str) or not value or len(value) > 256
+    ):
+        raise RefreshConfirmationError(
+            "confirmation token must be a non-empty string of at most 256 characters"
+        )
 
 
 def _refresh_control(request_json: object) -> dict[str, str]:

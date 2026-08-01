@@ -50,6 +50,7 @@ def test_packaged_migrations_are_idempotent_and_recorded(tmp_path: Path) -> None
         "0004_manual_promotion.sql",
         "0005_append_only_guards.sql",
         "0006_refresh_request_ledger.sql",
+        "0007_refresh_confirmation.sql",
     ]
     assert runner.migrate() == ()
     assert runner.validate() == ()

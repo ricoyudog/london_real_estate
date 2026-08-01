@@ -79,6 +79,7 @@ class RefreshBroker:
                 promotion_policy=profile.promotion_policy,
                 request_fingerprint=fingerprint,
                 cooldown_until=submitted_at + profile.cooldown,
+                confirmation_token=request.confirmation_token,
             )
         )
         return self._acknowledgement(profile, context, submitted_at, result)
@@ -135,6 +136,8 @@ class RefreshBroker:
 
     @staticmethod
     def _request_fingerprint(request: RefreshRequest) -> str:
+        # The confirmation token proves a second deliberate call; it does not
+        # alter the bounded refresh semantics that the durable request ID binds.
         return sha256(
             json.dumps(
                 {
@@ -188,6 +191,8 @@ class RefreshBroker:
             submitted_at=result.submitted_at or submitted_at,
             poll_after=profile.poll_after,
             canonical_anchor=result.canonical_anchor,
+            confirmation_token=result.confirmation_token,
+            confirmation_expires_at=result.confirmation_expires_at,
         )
 
 TrustedRefreshBroker = RefreshBroker

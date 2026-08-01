@@ -7,6 +7,7 @@ from typing import Mapping
 
 from nan_fung.operational import (
     OperationalStore,
+    RefreshConfirmationError,
     RefreshRequestAccessError,
     RefreshRequestReplayError,
 )
@@ -54,10 +55,13 @@ class OperationalRefreshBackend(RefreshBackend):
                 intent=submission.intent,
                 submitted_at=submission.submitted_at,
                 cooldown_until=submission.cooldown_until,
+                confirmation_token=submission.confirmation_token,
             )
         except RefreshRequestAccessError as error:
             raise RefreshAccessDenied(str(error)) from error
         except RefreshRequestReplayError as error:
+            raise InvalidRefreshRequest(str(error)) from error
+        except RefreshConfirmationError as error:
             raise InvalidRefreshRequest(str(error)) from error
         disposition = RefreshDisposition(result.disposition)
         return BackendSubmitResult(
@@ -65,6 +69,8 @@ class OperationalRefreshBackend(RefreshBackend):
             result.job_id,
             result.initial_state,
             submitted_at=result.submitted_at,
+            confirmation_token=result.confirmation_token,
+            confirmation_expires_at=result.confirmation_expires_at,
         )
 
     def get_status(

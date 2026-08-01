@@ -278,6 +278,106 @@ def test_refresh_ledger_enforces_restart_idempotency_cooldown_and_visibility(
         )
 
 
+def test_onspd_agent_refresh_daily_cap_requires_a_durable_second_confirmation(
+    tmp_path: Path,
+) -> None:
+    store = OperationalStore(tmp_path)
+    current = [datetime(2026, 8, 1, 22, 30, tzinfo=UTC)]  # 23:30 Europe/London.
+    profile = RefreshProfile(
+        profile_id="onspd-postcode",
+        datasource_id="ons.onspd.postcode",
+        definition_version=1,
+        effective_lane="production_ingestion",
+        allowed_scope_keys=frozenset({"postcode"}),
+        required_scope_keys=frozenset({"postcode"}),
+        single_value_scope_keys=frozenset({"postcode"}),
+    )
+
+    def broker() -> RefreshBroker:
+        return RefreshBroker(
+            {profile.profile_id: profile},
+            OperationalRefreshBackend(store),
+            clock=lambda: current[0],
+        )
+
+    def request(postcode: str, *, token: str | None = None) -> RefreshRequest:
+        return RefreshRequest(
+            datasource_id="ons.onspd.postcode",
+            request_profile=profile.profile_id,
+            bounded_scope={"postcode": postcode},
+            confirmation_token=token,
+        )
+
+    first_job_id = None
+    for index in range(20):
+        acknowledgement = broker().request(
+            RefreshContext(
+                "competition-agent",
+                f"onspd-{index}",
+                frozenset({profile.profile_id}),
+            ),
+            request(f"EC2Y 5A{chr(ord('A') + index)}"),
+        )
+        assert acknowledgement.disposition is RefreshDisposition.ACCEPTED
+        assert acknowledgement.job_id is not None
+        first_job_id = first_job_id or acknowledgement.job_id
+
+    assert first_job_id is not None
+    assert broker().get_status(
+        RefreshContext(
+            "competition-agent", "onspd-status", frozenset({profile.profile_id})
+        ),
+        first_job_id,
+    ) is not None
+    deduplicated = broker().request(
+        RefreshContext(
+            "competition-agent", "onspd-deduplicated", frozenset({profile.profile_id})
+        ),
+        request("EC2Y 5AA"),
+    )
+    assert deduplicated.disposition is RefreshDisposition.DEDUPLICATED
+    assert len(store.jobs()) == 20
+
+    blocked_context = RefreshContext(
+        "competition-agent", "onspd-20", frozenset({profile.profile_id})
+    )
+    blocked_request = request("EC2Y 5AZ")
+    blocked = broker().request(blocked_context, blocked_request)
+
+    assert blocked.disposition is RefreshDisposition.CONFIRMATION_REQUIRED
+    assert blocked.job_id is None
+    assert blocked.confirmation_token is not None
+    assert blocked.confirmation_expires_at == current[0] + timedelta(minutes=10)
+    assert len(store.jobs()) == 20
+
+    restarted = broker()
+    repeated_notice = restarted.request(blocked_context, blocked_request)
+    assert repeated_notice == blocked
+    with pytest.raises(InvalidRefreshRequest, match="confirmation is invalid"):
+        restarted.request(
+            blocked_context,
+            request("EC2Y 5AZ", token="not-the-issued-confirmation"),
+        )
+
+    confirmed = restarted.request(
+        blocked_context,
+        request("EC2Y 5AZ", token=blocked.confirmation_token),
+    )
+    assert confirmed.disposition is RefreshDisposition.ACCEPTED
+    assert confirmed.job_id is not None
+    assert len(store.jobs()) == 21
+
+    current[0] = datetime(2026, 8, 1, 23, 30, tzinfo=UTC)  # 00:30 next London day.
+    reset = broker().request(
+        RefreshContext(
+            "competition-agent", "onspd-next-day", frozenset({profile.profile_id})
+        ),
+        request("EC2Y 5BA"),
+    )
+    assert reset.disposition is RefreshDisposition.ACCEPTED
+    assert reset.job_id is not None
+
+
 def test_refresh_dedupe_recovers_a_pre_ledger_crash_orphan(tmp_path: Path) -> None:
     store = OperationalStore(tmp_path)
     submitted_at = datetime(2026, 8, 1, 12, tzinfo=UTC)

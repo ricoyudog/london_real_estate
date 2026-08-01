@@ -34,6 +34,7 @@ class RefreshDisposition(StrEnum):
     ACCEPTED = "accepted"
     DEDUPLICATED = "deduplicated"
     ALREADY_FRESH = "already_fresh"
+    CONFIRMATION_REQUIRED = "confirmation_required"
 
 
 def normalise_utc(value: datetime) -> datetime:
@@ -96,6 +97,7 @@ class RefreshRequest:
     request_profile: str
     bounded_scope: Mapping[str, object] = field(default_factory=dict)
     intent: str = "user_requested_refresh"
+    confirmation_token: str | None = None
 
     def __post_init__(self) -> None:
         if not self.datasource_id or not self.datasource_id.strip():
@@ -104,6 +106,12 @@ class RefreshRequest:
             raise InvalidRefreshRequest("request_profile must be non-empty")
         if not self.intent or len(self.intent) > 240:
             raise InvalidRefreshRequest("intent must be between 1 and 240 characters")
+        if self.confirmation_token is not None and (
+            not isinstance(self.confirmation_token, str)
+            or not self.confirmation_token
+            or len(self.confirmation_token) > 256
+        ):
+            raise InvalidRefreshRequest("confirmation_token must be a non-empty string")
         object.__setattr__(self, "bounded_scope", _normalise_scope(self.bounded_scope))
 
 
@@ -167,6 +175,7 @@ class RefreshSubmission:
     promotion_policy: str
     request_fingerprint: str
     cooldown_until: datetime
+    confirmation_token: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -187,6 +196,12 @@ class RefreshSubmission:
         cooldown_until = normalise_utc(self.cooldown_until)
         if cooldown_until < submitted_at:
             raise InvalidRefreshRequest("cooldown_until must not precede submitted_at")
+        if self.confirmation_token is not None and (
+            not isinstance(self.confirmation_token, str)
+            or not self.confirmation_token
+            or len(self.confirmation_token) > 256
+        ):
+            raise InvalidRefreshRequest("confirmation_token must be a non-empty string")
         object.__setattr__(self, "submitted_at", submitted_at)
         object.__setattr__(self, "cooldown_until", cooldown_until)
 
@@ -200,16 +215,41 @@ class BackendSubmitResult:
     initial_state: str
     canonical_anchor: datetime | None = None
     submitted_at: datetime | None = None
+    confirmation_token: str | None = None
+    confirmation_expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         disposition = RefreshDisposition(self.disposition)
-        if disposition is not RefreshDisposition.ALREADY_FRESH and not self.job_id:
+        if (
+            disposition
+            not in {
+                RefreshDisposition.ALREADY_FRESH,
+                RefreshDisposition.CONFIRMATION_REQUIRED,
+            }
+            and not self.job_id
+        ):
             raise ValueError("a queued refresh result requires a job_id")
+        if disposition is RefreshDisposition.CONFIRMATION_REQUIRED:
+            if self.job_id is not None:
+                raise ValueError("a confirmation-required result must not have a job_id")
+            if not self.confirmation_token or self.confirmation_expires_at is None:
+                raise ValueError("a confirmation-required result needs confirmation details")
+        elif (
+            self.confirmation_token is not None
+            or self.confirmation_expires_at is not None
+        ):
+            raise ValueError("confirmation details require confirmation_required")
         object.__setattr__(self, "disposition", disposition)
         if self.canonical_anchor is not None:
             object.__setattr__(self, "canonical_anchor", normalise_utc(self.canonical_anchor))
         if self.submitted_at is not None:
             object.__setattr__(self, "submitted_at", normalise_utc(self.submitted_at))
+        if self.confirmation_expires_at is not None:
+            object.__setattr__(
+                self,
+                "confirmation_expires_at",
+                normalise_utc(self.confirmation_expires_at),
+            )
 
 
 @dataclass(frozen=True)
@@ -223,12 +263,30 @@ class RefreshAcknowledgement:
     submitted_at: datetime
     poll_after: timedelta
     canonical_anchor: datetime | None = None
+    confirmation_token: str | None = None
+    confirmation_expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "disposition", RefreshDisposition(self.disposition))
+        disposition = RefreshDisposition(self.disposition)
+        if disposition is RefreshDisposition.CONFIRMATION_REQUIRED:
+            if self.job_id is not None:
+                raise ValueError("a confirmation-required acknowledgement must not have a job_id")
+            if not self.confirmation_token or self.confirmation_expires_at is None:
+                raise ValueError("a confirmation-required acknowledgement needs confirmation details")
+        elif (
+            self.confirmation_token is not None
+            or self.confirmation_expires_at is not None
+        ):
+            raise ValueError("confirmation details require confirmation_required")
+        object.__setattr__(self, "disposition", disposition)
         object.__setattr__(self, "submitted_at", normalise_utc(self.submitted_at))
         if self.canonical_anchor is not None:
             object.__setattr__(self, "canonical_anchor", normalise_utc(self.canonical_anchor))
+        if self.confirmation_expires_at is not None:
+            expires_at = normalise_utc(self.confirmation_expires_at)
+            if expires_at <= self.submitted_at:
+                raise ValueError("confirmation expiry must follow submission")
+            object.__setattr__(self, "confirmation_expires_at", expires_at)
 
 
 @dataclass(frozen=True)
