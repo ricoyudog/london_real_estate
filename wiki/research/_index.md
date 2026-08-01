@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Research Index
@@ -11,7 +11,10 @@ updated: 2026-07-31
 
 ### Datasource
 
-依照 [[User Requirement]]，目前 **13／13 類均已取得可用數據，datasource coverage 已完成**。
+依照 [[User Requirement]]，目前 **13／13 類均已取得 research-level 可用數據**。
+這是研究／legacy `SourceResult` coverage，不等於 production canonical coverage 或
+source-policy approval；現時 operational 狀態見
+[[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]]。
 
 接受標準：免費來源只要能取得真實數據即可，包括 direct API、公開報告的 `report-derived` 數據，以及相關的 `proxy` 數據。`proxy`／`report-derived` 均視為已取得，但輸出必須保留類型、原始定義、地理範圍及限制，不可改稱為直接測量值。
 

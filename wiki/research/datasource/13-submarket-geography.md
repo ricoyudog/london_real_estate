@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 source: "[[User Requirement]]"
 ---
 
@@ -107,3 +107,12 @@ canary_wharf = query_town_centres("Canary Wharf", include_geometry=True)
 3. ONSPD 包含 Royal Mail、Gridlink、OS 及 ONS 權利，重用前遵守 [ONS Geography licences](https://www.ons.gov.uk/methodology/geography/licences)並保留 attribution。GLA layer 標示 OGL v3，亦須保留其 OS/Crown copyright 說明。
 4. **沒有一套免費、官方、通用的 City／West End／Midtown／Fringe 商業辦公子市場 polygon。** ONSPD 是行政地理，GLA town-centre 是 planning policy geography，都不可直接宣稱為 broker submarket。
 5. 報告分析應保留每個供應商原有 submarket label；若日後自建映射，另存 version、規則及例外，不把它標成官方邊界。
+
+## Operational persistence status
+
+上述 ONSPD live sample 是 research/legacy lookup evidence。正式
+`ons.onspd.postcode` workflow 已實作為 **one-postcode、on-demand** ingestion，
+但因 ONS/OS/Royal Mail composite-geodata retention policy，必須由 data-governance
+owner 提供明確 retention deadline 後才可取得及保存 raw evidence；它不是
+scheduled full-directory collector。詳見
+[[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]]。

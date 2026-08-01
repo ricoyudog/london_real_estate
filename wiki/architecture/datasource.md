@@ -1,11 +1,16 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 status: accepted
 source: "[[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Python Data Plane]]"
 ---
 
 # Datasource Persistence Architecture: Observation + Evidence Store
+
+> **Implementation update (2026-08-01):** This architecture is now implemented
+> as the bounded datasource operational system. Actual live persistence results,
+> remaining policy gates and the ONSPD retention-approval procedure are recorded
+> in [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]].
 
 ## Decision
 
@@ -302,7 +307,7 @@ Unknown date 保留 `null`。`proxy`／`report-derived`、原始定義、地理�
 - 公開可下載不代表可以公開重新發布；broker PDF 等報告可以作內部 evidence，但產品不可提供整份鏡像下載，除非 licence 明確允許。
 - Evidence access、artifact submission、policy rejection 和 canonical promotion 均保留 audit trace。
 
-## Current Implementation Gap
+## Historical Implementation Gap (2026-07-31 baseline)
 
 現有 `SourceResult` 只有：
 

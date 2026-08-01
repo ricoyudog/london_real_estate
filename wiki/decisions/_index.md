@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # Decisions Index
@@ -9,4 +9,4 @@ updated: 2026-07-31
 
 ## Decisions
 
-(No decisions recorded yet — these are created when reviews approve significant choices)
+- [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status — 2026-08-01]]
