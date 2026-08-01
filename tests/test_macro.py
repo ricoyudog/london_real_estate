@@ -9,6 +9,7 @@ from nan_fung.datasources import macro
 from nan_fung.ingestion.bank_rate import BANK_RATE_DATASOURCE_ID
 from nan_fung.ingestion.parser_runner import parser_isolation_status
 from nan_fung.operational import OperationalStore
+from nan_fung.storage.db import connect_database
 from nan_fung.supervisor import DatasourceSupervisor
 
 
@@ -251,8 +252,8 @@ def test_live_nomis_london_sources() -> None:
 
 @pytest.mark.network
 @pytest.mark.live
-def test_live_bank_rate_operational_workflow(tmp_path) -> None:
-    """Exercise the approved CAS-to-promotion workflow, not its legacy adapter."""
+def test_live_bank_rate_operational_workflow_writes_canonical_data(tmp_path) -> None:
+    """Verify real acquisition reaches evidence, observations, and promotion."""
 
     isolation = parser_isolation_status()
     if not isolation["available"]:
@@ -269,5 +270,34 @@ def test_live_bank_rate_operational_workflow(tmp_path) -> None:
     assert tick.state == "succeeded"
     assert tick.job_id == queued.job_id
     assert tick.run_id
-    assert store.get_job(queued.job_id)["state"] == "succeeded"
-    assert store.verify_evidence()["ok"]
+    job = store.get_job(queued.job_id)
+    assert job is not None
+    assert job["state"] == "succeeded"
+    run = job["run"]
+    assert run is not None
+    assert run["record_count"] > 0
+    assert run["accepted_record_count"] == run["record_count"]
+    assert run["rejected_record_count"] == 0
+    assert job["promotions"][-1]["decision"] == "approved"
+    verification = store.verify_evidence()
+    assert verification["ok"]
+    assert verification["checked"] == 1
+
+    connection = connect_database(store.database_path, read_only=True)
+    try:
+        canonical_count = connection.execute(
+            """
+            SELECT COUNT(*) FROM canonical_latest_v1
+            WHERE datasource_id = ?
+            """,
+            (BANK_RATE_DATASOURCE_ID,),
+        ).fetchone()[0]
+        evidence_count = connection.execute(
+            "SELECT COUNT(*) FROM run_evidence WHERE run_id = ?",
+            (tick.run_id,),
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert canonical_count == run["accepted_record_count"]
+    assert evidence_count == 1
