@@ -42,8 +42,9 @@ automation approval；產品 coverage 仍以 source policy fail-closed。
 | VOA office stock | 1 accepted record、3-evidence collection → release-page → ZIP lineage |
 | ONS hybrid working | 160 accepted records、2 evidence |
 | MHCLG EPC Table A | 71 accepted records、2 evidence；latest `2026/2` has 3,630 lodgements |
+| ONSPD one-postcode | `EC2Y 5AS`：1 accepted record、2 immutable ArcGIS evidence、automatic promotion approved；both evidence rows retain until `2026-08-31T00:00:00Z` |
 
-The final local gates passed: `uv run pytest -q` (`290 passed, 15 deselected`),
+The final local gates passed: `uv run pytest -q` (`291 passed, 15 deselected`),
 `uv run pytest -q -m live` (`1 passed, 304 deselected`), `uv build`, and clean
 wheel install followed by `cre db migrate` and `cre health`.
 
@@ -86,17 +87,24 @@ The requester made the following competition-mode decision on 2026-08-01:
    way to bypass source redistribution conditions. This records project intent;
    the upstream terms remain authoritative.
 
-### Recommended retention deadline
+### Approved competition retention deadline
 
-For a competition proof-of-concept, the recommended default is **90 days**:
-`2026-10-30T23:59:59Z` from the current 2026-08-01 decision date. It is long
-enough to demonstrate provenance, reparse and restore, while requiring an
-explicit review before the evidence becomes a forgotten long-lived store. If
-the competition ends earlier, use its end date plus 14 days instead.
+The requester approved a retention period of no more than 30 days. The trusted
+daemon used `2026-08-31T00:00:00Z`, which is safely within 30 days of the
+2026-08-01 decision time. This keeps enough evidence for a competition demo,
+reparse and restore drill without creating a long-lived geography archive.
 
-This date is a recommendation, not yet an activated live-capture approval. A
-single explicit confirmation of the exact timestamp is still required before a
-real ONSPD network run writes evidence and observations.
+On 2026-08-01 the live run `run_89abe0721f0f42cb814fe276229197ee` fetched the
+official ONSPD layer metadata and the exact `EC2Y 5AS` query into two CAS
+artifacts (`ev_2b6b5a0a8bda4049ac94dd8f93137506` and
+`ev_07c7dc01ea2f48d0b7ed422e22fc3bcc`). It persisted and automatically promoted
+`obs_fa76edeb75824066b116234c60fac5ca`; a canonical as-of read at
+`2026-08-01T10:24:08Z` returned the City of London geography record. Integrity
+and evidence hash verification both passed.
+
+Any later live ONSPD run must still be supplied a future deadline. Before this
+deadline expires, renew it with a new explicit project decision or stop live
+capture and let the evidence enter the existing retention-review process.
 
 ### Minimum approval record
 
@@ -121,7 +129,7 @@ Approve ONSPD one-postcode operational evidence retention
 Scope: ons.onspd.postcode; one postcode per on-demand request only
 Purpose: competition London-office geography lookup
 Audience: competition-agent and its trusted operator host only
-Retention until: 2026-10-30T23:59:59Z (proposed; confirm before activation)
+Retention until: 2026-08-31T00:00:00Z
 Attribution / redistribution conditions: preserve ONS / OS / Royal Mail terms
 Approver: competition-project; approval date: 2026-08-01; review owner: competition-project
 ```
@@ -135,7 +143,7 @@ passes the approved deadline to the daemon:
 cre --config /etc/cre/cre.toml ingest enqueue ons.onspd.postcode \
   --request '{"postcode":"EC2Y 5AS"}'
 cre --config /etc/cre/cre.toml daemon once --allow-network \
-  --onspd-retention-until 2026-10-30T23:59:59Z
+  --onspd-retention-until 2026-08-31T00:00:00Z
 ```
 
 The daemon rejects a missing deadline with `RETENTION_APPROVAL_REQUIRED`
@@ -143,8 +151,9 @@ before any network or CAS write. A supplied deadline must be timezone-aware
 and after the evidence retrieval time; it is stored as
 `evidence_artifact.retention_until`. `cre retention dry-run` later lists
 eligible evidence without deleting it. Agent-facing refresh contracts cannot
-choose the deadline, URL, layer, lane or output geometry. Do not execute the
-example with the proposed date until it has been explicitly confirmed.
+choose the deadline, URL, layer, lane or output geometry. The documented
+deadline is approved for the competition; do not extend it without a new
+project decision.
 
 ## References
 

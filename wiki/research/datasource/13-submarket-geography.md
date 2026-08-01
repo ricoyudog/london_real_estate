@@ -111,9 +111,10 @@ canary_wharf = query_town_centres("Canary Wharf", include_geometry=True)
 ## Operational persistence status
 
 上述 ONSPD live sample 是 research/legacy lookup evidence。正式
-`ons.onspd.postcode` workflow 已實作為 **one-postcode、on-demand** ingestion，
-但因 ONS/OS/Royal Mail composite-geodata retention policy，必須由 data-governance
-owner 或 competition-project 記錄明確 retention deadline 後才可取得及保存 raw
-evidence；它不是 scheduled full-directory collector。competition agent tool 現在
-以 London 日曆日限制 20 個新 refresh job，超額必須以確認碼作第二次確認。詳見
+`ons.onspd.postcode` workflow 已實作為 **one-postcode、on-demand** ingestion。
+2026-08-01 已以 `EC2Y 5AS` 完成實際 production ingestion：2 個 immutable
+evidence、1 個 canonical geography observation 和 automatic promotion，evidence
+retention deadline 為 `2026-08-31T00:00:00Z`。它不是 scheduled full-directory
+collector。competition agent tool 以 London 日曆日限制 20 個新 refresh job，超額
+必須以確認碼作第二次確認。詳見
 [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]]。

@@ -170,7 +170,7 @@ one postcode, then supply the retention decision at the trusted daemon boundary:
 cre --config /etc/cre/cre.toml ingest enqueue ons.onspd.postcode \
   --request '{"postcode":"EC2Y 5AS"}'
 cre --config /etc/cre/cre.toml daemon once --allow-network \
-  --onspd-retention-until 2026-10-30T23:59:59Z
+  --onspd-retention-until 2026-08-31T00:00:00Z
 ```
 
 Agent-facing refresh requests use a trusted profile that requires exactly one
@@ -194,10 +194,12 @@ the job is queued. The trusted host may use the fixed principal
 applies to the agent-facing refresh tool, not to local operator commands,
 which must never be exposed to the competition agent.
 
-`2026-10-30T23:59:59Z` is the proposed 90-day ONSPD retention deadline for the
-competition. It is not an activated permission: confirm the exact timestamp
-before passing it to a live daemon. Preserve the current ONS / OS / Royal Mail
-attribution and reuse conditions described in the [ONS Geography licences](https://www.ons.gov.uk/methodology/geography/licences).
+`2026-08-31T00:00:00Z` is the approved ONSPD retention deadline for this
+competition (no more than 30 days from the decision). A real `EC2Y 5AS` daemon
+run has persisted two evidence artifacts, one canonical geography observation,
+and an approved promotion under that deadline. Preserve the current ONS / OS /
+Royal Mail attribution and reuse conditions described in the [ONS Geography licences](https://www.ons.gov.uk/methodology/geography/licences). Do not extend
+the deadline without a new project decision.
 
 For an offline fixture drill, the direct Bank Rate command is allowed and has
 the same ingestion lifecycle after acquisition:
