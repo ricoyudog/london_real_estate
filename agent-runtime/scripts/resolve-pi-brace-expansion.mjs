@@ -1,42 +1,52 @@
-import { existsSync, lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const runtimeRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const piRoot = join(runtimeRoot, "node_modules", "@earendil-works", "pi-coding-agent");
 const nestedPackage = join(piRoot, "node_modules", "brace-expansion");
+const nestedDependency = join(piRoot, "node_modules", "balanced-match");
 const fixedPackage = join(runtimeRoot, "node_modules", "brace-expansion");
 const shrinkwrapPath = join(piRoot, "npm-shrinkwrap.json");
-const fixed = {
-  version: "5.0.9",
-  resolved: "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
-  integrity: "sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==",
-};
+const fixedVersion = "5.0.9";
 
 function packageVersion(path) {
   return JSON.parse(readFileSync(join(path, "package.json"), "utf8")).version;
 }
 
-if (packageVersion(fixedPackage) !== fixed.version) {
-  throw new Error(`expected top-level brace-expansion ${fixed.version}`);
+if (packageVersion(fixedPackage) !== fixedVersion) {
+  throw new Error(`expected top-level brace-expansion ${fixedVersion}`);
 }
 
-let nestedVersion;
-if (existsSync(nestedPackage)) {
-  const stat = lstatSync(nestedPackage);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("unexpected nested brace-expansion path");
-  nestedVersion = packageVersion(nestedPackage);
-}
-if (nestedVersion !== undefined && nestedVersion !== "5.0.7") {
-  throw new Error(`unexpected nested brace-expansion ${nestedVersion}`);
+for (const [path, expectedVersion] of [[nestedPackage, "5.0.7"], [nestedDependency, "4.0.4"]]) {
+  if (!existsSync(path)) continue;
+  const stat = lstatSync(path);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("unexpected nested dependency path");
+  if (packageVersion(path) !== expectedVersion) throw new Error(`unexpected nested dependency ${path}`);
 }
 
 const shrinkwrap = JSON.parse(readFileSync(shrinkwrapPath, "utf8"));
-const entry = shrinkwrap.packages?.["node_modules/brace-expansion"];
-if (!entry || !["5.0.7", fixed.version].includes(entry.version)) {
+const packages = shrinkwrap.packages;
+if (packages === null || typeof packages !== "object") throw new Error("invalid Pi shrinkwrap packages");
+const braceEntry = packages["node_modules/brace-expansion"];
+const balancedEntry = packages["node_modules/balanced-match"];
+if (braceEntry !== undefined && braceEntry.version !== "5.0.7") {
   throw new Error("unexpected Pi brace-expansion shrinkwrap entry");
 }
+if (balancedEntry !== undefined && balancedEntry.version !== "4.0.4") {
+  throw new Error("unexpected Pi balanced-match shrinkwrap entry");
+}
 
-if (nestedVersion !== undefined) rmSync(nestedPackage, { recursive: true });
-Object.assign(entry, fixed, { engines: { node: "20 || >=22" } });
+if (existsSync(nestedPackage)) rmSync(nestedPackage, { recursive: true });
+if (existsSync(nestedDependency)) rmSync(nestedDependency, { recursive: true });
+delete packages["node_modules/brace-expansion"];
+delete packages["node_modules/balanced-match"];
 writeFileSync(shrinkwrapPath, `${JSON.stringify(shrinkwrap, null, 2)}\n`, "utf8");
+
+const minimatchRequire = createRequire(join(piRoot, "node_modules", "minimatch", "package.json"));
+const resolvedEntry = realpathSync(minimatchRequire.resolve("brace-expansion"));
+const resolvedRelative = relative(realpathSync(fixedPackage), resolvedEntry);
+if (resolvedRelative === ".." || resolvedRelative.startsWith(`..${sep}`)) {
+  throw new Error("Pi minimatch did not resolve the fixed brace-expansion package");
+}
