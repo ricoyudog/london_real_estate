@@ -10,10 +10,9 @@ import { TurnContext, defaultTurnLimits, type SessionContext } from "../src/runt
 import { createSessionTools, modelVisibleBytes } from "../src/tools.ts";
 import Schema from "typebox/schema";
 
-const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const worktreeRoot = resolve(runtimeRoot, "..");
+const mainCheckoutRoot = "/Users/chunsingyu/softwares/nan_fung";
 const fixtures = JSON.parse(
-  readFileSync(join(worktreeRoot, "tests/fixtures/agent_tools/v1/tool-contract-fixtures.json"), "utf8"),
+  readFileSync(join(mainCheckoutRoot, "tests/fixtures/agent_tools/v1/tool-contract-fixtures.json"), "utf8"),
 ) as {
   readonly valid: Readonly<Record<string, { readonly arguments: unknown }>>;
   readonly invalid: readonly { readonly selector: string; readonly target: string; readonly value: unknown }[];
