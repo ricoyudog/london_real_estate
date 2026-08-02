@@ -10,17 +10,17 @@
       "numeric_value": "5.25",
       "numeric_unit": "percent",
       "numeric_definition": "Official Bank of England Bank Rate series IUDBEDR",
-      "numeric_as_of": "2026-08-02T03:59:23.558948Z",
+      "numeric_as_of": "2026-08-02T04:02:00.499794Z",
       "numeric_source_date": "2026-07-31",
       "numeric_period_label": "2026-07-31"
     }
   ],
   "inferences": [],
   "limitations": [],
-  "as_of": "2026-08-02T03:59:23.558948Z",
+  "as_of": "2026-08-02T04:02:00.499794Z",
   "sources": [
     {
-      "citation_ref": "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjU1ODk0OFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzI5OTk4OTgyZWNiNjRjNjU4M2YzOGQzNjI4MzdmMzdhIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl9jYmYzMGZmMzc1ZmI0NWNlYTYwMGEzMWMxNDUxNTZkMSIsImxvY2F0b3JfaGFzaCI6Ijg5MzMzNTIxZTJiOTJjNDNjYmNmYmJkYzQ0OGIwOTZlYjg0NTk2YmY2YTlkNmQ0ZWU5NWM5YmU5OTFiZGRjMWEiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic182YzIzNWI3YTRmNjU0MmU3OTQ4Nzg4N2Q2YzU3ZmUyOCJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy41NjE4ODRaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.Ed0M_9agt1ydw6GMo7KbURzeles0Mg8Wrb60XnJsJ8w",
+      "citation_ref": "<citation-ref>",
       "source": "Bank of England",
       "published_at": "2026-08-01T09:00:00.000000Z"
     }
@@ -28,10 +28,10 @@
   "lineage": {
     "bank-rate": {
       "observation_ids": [
-        "obs_6c235b7a4f6542e79487887d6c57fe28"
+        "<observation-id>"
       ],
       "citation_refs": [
-        "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjU1ODk0OFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzI5OTk4OTgyZWNiNjRjNjU4M2YzOGQzNjI4MzdmMzdhIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl9jYmYzMGZmMzc1ZmI0NWNlYTYwMGEzMWMxNDUxNTZkMSIsImxvY2F0b3JfaGFzaCI6Ijg5MzMzNTIxZTJiOTJjNDNjYmNmYmJkYzQ0OGIwOTZlYjg0NTk2YmY2YTlkNmQ0ZWU5NWM5YmU5OTFiZGRjMWEiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic182YzIzNWI3YTRmNjU0MmU3OTQ4Nzg4N2Q2YzU3ZmUyOCJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy41NjE4ODRaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.Ed0M_9agt1ydw6GMo7KbURzeles0Mg8Wrb60XnJsJ8w"
+        "<citation-ref>"
       ]
     }
   },

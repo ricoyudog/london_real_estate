@@ -10,7 +10,7 @@
       "numeric_value": "5.25",
       "numeric_unit": "percent",
       "numeric_definition": "Official Bank of England Bank Rate series IUDBEDR",
-      "numeric_as_of": "2026-08-02T03:59:23.008683Z",
+      "numeric_as_of": "2026-08-02T04:01:59.794669Z",
       "numeric_source_date": "2026-07-31",
       "numeric_period_label": "2026-07-31"
     }
@@ -19,10 +19,10 @@
   "limitations": [
     "Freshness is degraded."
   ],
-  "as_of": "2026-08-02T03:59:23.008683Z",
+  "as_of": "2026-08-02T04:01:59.794669Z",
   "sources": [
     {
-      "citation_ref": "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjAwODY4M1oiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzUyMzAzNDY1NDY1NzQ0M2Q4MTRjNDNiYTU1ZWJiNjA3IiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl82OTBmYWU3OWIxYzI0ZjE1YjNlMWYyODEwNmM4OGMwOCIsImxvY2F0b3JfaGFzaCI6ImI5MDNjODY3M2E4MmQyOTU1ZDg0NjE2NTViMjM4MTgzY2U1ZDZjODNjODdmMzVkYTdjZWYwMzcxNjM1Y2U4YWMiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic184ZThmODYzOGFhMmQ0YjdhYTIyZTJjNWQ3NDhmMGE0MyJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy4wMTE4MTBaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.E3FJg055VPDqYLXlvrGfehP4M5btQuWgkg68u1aEHYU",
+      "citation_ref": "<citation-ref>",
       "source": "Bank of England",
       "published_at": "2026-08-01T09:00:00.000000Z"
     }
@@ -30,10 +30,10 @@
   "lineage": {
     "bank-rate": {
       "observation_ids": [
-        "obs_8e8f8638aa2d4b7aa22e2c5d748f0a43"
+        "<observation-id>"
       ],
       "citation_refs": [
-        "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjAwODY4M1oiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzUyMzAzNDY1NDY1NzQ0M2Q4MTRjNDNiYTU1ZWJiNjA3IiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl82OTBmYWU3OWIxYzI0ZjE1YjNlMWYyODEwNmM4OGMwOCIsImxvY2F0b3JfaGFzaCI6ImI5MDNjODY3M2E4MmQyOTU1ZDg0NjE2NTViMjM4MTgzY2U1ZDZjODNjODdmMzVkYTdjZWYwMzcxNjM1Y2U4YWMiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic184ZThmODYzOGFhMmQ0YjdhYTIyZTJjNWQ3NDhmMGE0MyJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy4wMTE4MTBaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.E3FJg055VPDqYLXlvrGfehP4M5btQuWgkg68u1aEHYU"
+        "<citation-ref>"
       ]
     }
   },

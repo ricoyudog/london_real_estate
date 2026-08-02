@@ -250,11 +250,23 @@ function writeFixtureEvidence(fixture: string, outcome: TurnOutcome, calls: read
   assert.ok(records.length <= outcome.turn.limits.cumulativeRecords);
   assert.ok(citations.length <= outcome.turn.limits.cumulativeCitations);
   assert.ok(bytes <= outcome.turn.limits.cumulativeModelToolBytes);
-  writeJson(join(directory, "tool-calls.json"), calls.map((call) => ({ name: call.toolName, result: call.result })));
+  writeJson(join(directory, "tool-calls.json"), toolNames);
   writeJson(join(directory, "budget.json"), { facade_calls: toolNames.length, records: records.length, citations: citations.length, model_tool_bytes: bytes, limits: outcome.turn.limits });
-  writeJson(join(directory, "artifact.json"), outcome.artifact);
+  writeJson(join(directory, "artifact.json"), stableEvidence(outcome.artifact));
   writeJson(join(directory, "events.json"), outcome.events);
 }
 
 function writeJson(path: string, value: unknown): void { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`); }
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+
+function stableEvidence(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableEvidence);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([name, item]) => {
+    if (["citation_ref", "numeric_citation_ref"].includes(name)) return [name, "<citation-ref>"];
+    if (name === "citation_refs") return [name, Array.isArray(item) ? item.map(() => "<citation-ref>") : item];
+    if (["observation_id", "evidence_id", "canonical_run_id"].includes(name)) return [name, `<${name.replaceAll("_", "-")}>`];
+    if (name === "observation_ids") return [name, Array.isArray(item) ? item.map(() => "<observation-id>") : item];
+    return [name, stableEvidence(item)];
+  }));
+}

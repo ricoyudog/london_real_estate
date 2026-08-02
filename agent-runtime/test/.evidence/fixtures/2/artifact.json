@@ -22,7 +22,7 @@
   "as_of": "2026-08-02T00:00:00.000000Z",
   "sources": [
     {
-      "citation_ref": "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAwOjAwOjAwLjAwMDAwMFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzliMTYzOThmYmE4MjQxNTdhY2JiZTY3YWE2YzcyZmMwIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl8yN2JjMjIzODhhNDE0MzVhYjcxMzc3YjcyZTg1MzcwZiIsImxvY2F0b3JfaGFzaCI6ImYzOGU5NTBmNjlhNjIzNmNhOWY2ODIyNTBlZWEwODE0N2NkYjNmMjI0MDBkYTEyOWJlNzczOGQyNjQyNDRjZWUiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic184NGE4OThmMDA1OTA0MWUyODhlNzY5MjAyN2FhMzAwZSJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMi43NjAwODlaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.U8VeqsyiPYk2AnUV11dUunTf_fXjQxN2lHGp9IW4DcU",
+      "citation_ref": "<citation-ref>",
       "source": "Bank of England",
       "published_at": "2026-08-01T09:00:00.000000Z"
     }
@@ -30,10 +30,10 @@
   "lineage": {
     "bank-rate": {
       "observation_ids": [
-        "obs_84a898f0059041e288e7692027aa300e"
+        "<observation-id>"
       ],
       "citation_refs": [
-        "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAwOjAwOjAwLjAwMDAwMFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzliMTYzOThmYmE4MjQxNTdhY2JiZTY3YWE2YzcyZmMwIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl8yN2JjMjIzODhhNDE0MzVhYjcxMzc3YjcyZTg1MzcwZiIsImxvY2F0b3JfaGFzaCI6ImYzOGU5NTBmNjlhNjIzNmNhOWY2ODIyNTBlZWEwODE0N2NkYjNmMjI0MDBkYTEyOWJlNzczOGQyNjQyNDRjZWUiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic184NGE4OThmMDA1OTA0MWUyODhlNzY5MjAyN2FhMzAwZSJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMi43NjAwODlaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.U8VeqsyiPYk2AnUV11dUunTf_fXjQxN2lHGp9IW4DcU"
+        "<citation-ref>"
       ]
     }
   },
