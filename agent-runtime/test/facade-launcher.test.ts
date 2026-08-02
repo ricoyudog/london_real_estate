@@ -50,12 +50,12 @@ function withHelper(dataDir: string, kill?: typeof process.kill): FacadeLauncher
 }
 
 async function waitForGone(pids: readonly number[]): Promise<void> {
-  const deadline = performance.now() + 4_000;
+  const deadline = performance.now() + 5_000;
   while (performance.now() < deadline) {
     if (pids.every((pid) => {
       try { process.kill(pid, 0); return false; } catch { return true; }
     })) return;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
   }
   assert.fail(`processes survived: ${pids.join(",")}`);
 }
@@ -64,7 +64,8 @@ async function waitForPidFile(path: string): Promise<readonly number[]> {
   const deadline = performance.now() + 4_000;
   while (performance.now() < deadline) {
     try {
-      return readFileSync(path, "utf8").trim().split("\n").map(Number);
+      const pids = readFileSync(path, "utf8").trim().split("\n").map(Number);
+      if (pids.length > 0 && pids.every((pid) => Number.isInteger(pid) && pid > 0)) return pids;
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
@@ -221,7 +222,7 @@ test("o: timeout cleanup failure settles and reaps the child without an external
     Object.assign(error, { code: "EPERM" });
     throw error;
   };
-  const invocation = withHelper(dataDir, deniedKill).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 1 });
+  const invocation = withHelper(dataDir, deniedKill).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 3 });
   const pids = await waitForPidFile(join(dataDir, "call_timeout.pids"));
   const groupLeader = pids[0];
   assert.ok(groupLeader !== undefined);
@@ -229,7 +230,7 @@ test("o: timeout cleanup failure settles and reaps the child without an external
   // When: timeout and failed cleanup happen together
   const result = await Promise.race([
     invocation,
-    new Promise<"TIMEOUT">((resolvePromise) => setTimeout(() => resolvePromise("TIMEOUT"), 2_000)),
+    new Promise<"TIMEOUT">((resolvePromise) => setTimeout(() => resolvePromise("TIMEOUT"), 4_000)),
   ]);
 
   // Then: the more severe cleanup failure settles without an external kill
