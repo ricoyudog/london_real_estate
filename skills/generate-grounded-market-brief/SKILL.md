@@ -6,7 +6,9 @@ type: skill
 
 # Generate a Grounded Market Brief
 
-Use `finalize_market_brief` only after gathering the facts and resolving the citations that support them. Submit a bounded `market_brief_draft.v1` with this shape:
+After gathering facts and resolving their citations, your FINAL action MUST be exactly one `finalize_market_brief` call with the complete `market_brief_draft.v1`. Without that call no brief is delivered and the turn has failed.
+
+Use `finalize_market_brief` only after gathering the facts and resolving the citations that support them. A `complete`, `partial`, or `unavailable` brief is a successful delivery; a partial brief with explicit limitations is preferable to refusing to finalize. Submit a bounded `market_brief_draft.v1` with this shape:
 
 ```text
 title

@@ -40,6 +40,8 @@ Take `citation_refs` only from `query_market_data` results. Resolve those exact 
 
 Keep citation metadata separate from the observation. Report limits and missing publication metadata when returned. If a citation cannot be resolved, do not turn its observation into a numeric fact.
 
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.
+
 ## Refresh carefully
 
 Request refreshes only with `request_data_refresh` and `request_profile: "bank-rate-latest"`. A refresh acknowledgement or status is not market data.
