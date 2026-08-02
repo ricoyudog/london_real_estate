@@ -99,6 +99,10 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     if (turn.isCancelled()) await session.abort();
     else await runBeforeDeadline(session, turn, continueSession === undefined ? () => session.prompt(userMessage) : continueSession);
   } catch (error) {
+    if (turn.isCancelled()) {
+      state.reducer.transition({ type: "turn.completed", terminal_state: "cancelled" });
+      return outcome(state, turn, "cancelled");
+    }
     if (error instanceof TurnDeadlineExceeded) {
       state.reducer.transition({ type: "turn.failed", reason_code: "TURN_DEADLINE_EXCEEDED" });
       return outcome(state, turn, "failed", "TURN_DEADLINE_EXCEEDED");
@@ -224,16 +228,29 @@ async function runBeforeDeadline(session: Session, turn: TurnContext, runPrompt:
   const prompt = runPrompt();
   const remaining = turn.getDeadlineRemainingMs();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let unsubscribeCancel: () => void = () => undefined;
   try {
+    const cancelled = new Promise<"cancelled">((resolve) => {
+      unsubscribeCancel = turn.cancelEvent.onCancel(() => {
+        resolve("cancelled");
+        void session.abort().catch(() => undefined);
+      });
+    });
     const winner = await Promise.race([
       prompt.then(() => "prompt" as const),
       new Promise<"deadline">((resolve) => { timeout = setTimeout(() => resolve("deadline"), remaining); }),
+      cancelled,
     ]);
     if (winner === "prompt") return;
+    if (winner === "cancelled") {
+      void prompt.catch(() => undefined);
+      return;
+    }
     void session.abort().catch(() => undefined);
     void prompt.catch(() => undefined);
     throw new TurnDeadlineExceeded();
   } finally {
+    unsubscribeCancel();
     if (timeout !== undefined) clearTimeout(timeout);
   }
 }

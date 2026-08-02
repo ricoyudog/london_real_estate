@@ -99,7 +99,7 @@ export async function createApp(deps: AppDeps): Promise<App> {
       approval.enqueueContinuation(sessionId, turnId, wrapped, outcome);
       const reducer = new LifecycleReducer();
       for (const event of outcome.events.slice(1)) {
-        if (outcome.terminal_state === "cancelled" && event.type === "turn.completed") continue;
+        if (outcome.terminal_state === "cancelled") continue;
         if (approval.isAwaiting(sessionId) && (event.type === "turn.completed" || event.type === "turn.failed")) continue;
         projectLifecycle(sessionId, turnId, hub, reducer, event, outcome.artifact);
       }

@@ -36,6 +36,24 @@ test("(m.1) a stalled Pi prompt reaches deadline and is aborted", async (t) => {
   assert.deepEqual(outcome.events.map((event) => event.type), ["turn.started", "turn.failed"]);
   assert.equal(runtime.booted.getTurnContext(), undefined);
 });
+test("(m.2) cancelling a stalled Pi prompt aborts it before the deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const runtime = fake(async () => undefined, [], { stallPromptUntilAbort: true });
+  const pending = run(runtime);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  cancelTurn(runtime.booted);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const abortsAfterCancel = runtime.aborts;
+
+  t.mock.timers.tick(defaultTurnLimits.turnDeadlineMs);
+  const outcome = await pending;
+  assert.equal(abortsAfterCancel, 1);
+  assert.equal(outcome.terminal_state, "cancelled");
+  assert.equal(outcome.reason_code, undefined);
+  assert.deepEqual(outcome.events.map((event) => event.type), ["turn.started", "turn.completed"]);
+  assert.equal(runtime.booted.getTurnContext(), undefined);
+});
 test("(n) split numeric model text fails without an artifact", async () => { const runtime = fake(async (_driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); }); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.reason_code, "NUMERIC_GUARD_REJECTED"); assert.equal(outcome.artifact, undefined); });
 test("(n.0a) a turn without a host-finalized artifact has a safe reason", async () => { const runtime = fake(async () => undefined); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.reason_code, "NO_FINAL_ARTIFACT"); });
 test("(n.0) host finalization supersedes earlier numeric model prose", async () => { const runtime = fake(async (driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); await driver.call("finalize_market_brief", {}); }, [ok({ schema_version: "market_brief.v1" })]); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "completed"); assert.deepEqual(outcome.artifact, { schema_version: "market_brief.v1" }); });

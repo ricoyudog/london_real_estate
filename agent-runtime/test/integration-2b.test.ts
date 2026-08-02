@@ -76,15 +76,20 @@ test("cancel and conflict are observable through the real transport and release 
   await stream.connected;
   const turn = await postMessage(fixture.origin, session, "Give the latest Bank Rate.");
   await waitFor(() => fixture.app.hub.events(session.id).some((event) => event.type === "turn.started"));
+  await waitFor(() => fixture.launcher.calls.some((call) => call.toolName === "query_market_data"));
   const conflict = await fetch(`${fixture.origin}/v1/sessions/${session.id}/messages`, { method: "POST", headers: auth(session), body: JSON.stringify({ message: "Give the current rate." }) });
   assert.equal(conflict.status, 409);
   const cancelled = await fetch(`${fixture.origin}/v1/sessions/${session.id}/turns/${turn}/cancel`, { method: "POST", headers: auth(session) });
   assert.equal(cancelled.status, 202);
-  gate.resolve();
   const events = await stream.until((items) => terminal(items, turn));
   assert.equal(events.filter((event) => event.turn_id === turn && event.type === "turn.completed").length, 1);
   assert.equal(events.some((event) => event.turn_id === turn && event.type === "artifact.final"), false);
   assert.equal(record(events.find((event) => event.turn_id === turn && event.type === "turn.completed")?.payload)["terminal_state"], "cancelled");
+  await waitFor(() => fixture.traces.some((entry) => record(entry)["turn_id"] === turn));
+  const cancelledTrace = fixture.traces.find((entry) => record(entry)["turn_id"] === turn);
+  assert.equal(record(cancelledTrace)["terminal_state"], "cancelled");
+  assert.equal(record(cancelledTrace)["reason_code"], undefined);
+  gate.resolve();
   const cancelledTerminal = events.find((event) => event.turn_id === turn && event.type === "turn.completed");
   assert.ok(cancelledTerminal);
   const replayAfterCancel = openSse(fixture.origin, session, cancelledTerminal.event_id);
@@ -180,9 +185,10 @@ async function setup(name: string, publishedNull: boolean, firstResponseGate?: P
 
 function scriptedTurn(launcher: RecordingLauncher, gate?: Promise<void>): readonly FauxResponseStep[] {
   const query = fauxAssistantMessage(fauxToolCall("query_market_data", { capability_id: "uk.bank-rate-current", query_kind: "metrics", limit: 1 }), { stopReason: "toolUse" });
+  const citation = () => fauxAssistantMessage(fauxToolCall("get_citation_metadata", { citation_refs: queryRecord(launcher)["citation_refs"] }), { stopReason: "toolUse" });
   return [
-    gate === undefined ? query : async () => { await gate; return query; },
-    () => fauxAssistantMessage(fauxToolCall("get_citation_metadata", { citation_refs: queryRecord(launcher)["citation_refs"] }), { stopReason: "toolUse" }),
+    query,
+    gate === undefined ? citation : async () => { await gate; return citation(); },
     () => {
       const refs = queryRecord(launcher)["citation_refs"];
       assert.ok(Array.isArray(refs) && typeof refs[0] === "string");
