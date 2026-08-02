@@ -7,7 +7,7 @@
   "required": ["schema_version", "request_id", "arguments", "host_context"],
   "properties": {
     "schema_version": {"const": "agent_tool_request.v1"},
-    "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "request_id": {"$ref": "#/$defs/non_empty_string"},
     "arguments": {"type": "object"},
     "host_context": {"$ref": "#/$defs/host_context"}
   },
@@ -25,11 +25,11 @@
         "allowed_refresh_profiles"
       ],
       "properties": {
-        "principal": {"type": "string", "minLength": 1, "maxLength": 256},
-        "capability_scope_id": {"type": "string", "minLength": 1, "maxLength": 256},
-        "turn_id": {"type": "string", "minLength": 1, "maxLength": 256},
-        "tool_call_id": {"type": "string", "minLength": 1, "maxLength": 256},
-        "refresh_request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "principal": {"$ref": "#/$defs/non_empty_string"},
+        "capability_scope_id": {"$ref": "#/$defs/non_empty_string"},
+        "turn_id": {"$ref": "#/$defs/non_empty_string"},
+        "tool_call_id": {"$ref": "#/$defs/non_empty_string"},
+        "refresh_request_id": {"$ref": "#/$defs/non_empty_string"},
         "allowed_access_classes": {"$ref": "#/$defs/non_empty_strings"},
         "allowed_capability_ids": {"$ref": "#/$defs/strings"},
         "allowed_refresh_profiles": {"$ref": "#/$defs/strings"}
@@ -37,8 +37,15 @@
     },
     "strings": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1, "maxLength": 256},
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/non_empty_string"},
       "uniqueItems": true
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S"
     },
     "non_empty_strings": {
       "allOf": [

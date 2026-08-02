@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-01
+updated: 2026-08-02
 status: accepted
 implementation_status: complete
 source: "[[wiki/research/agent-skill-and-tool/skill-and-tool-design|Agent Runtime, Skill and Tool Research]]"
@@ -9,7 +9,7 @@ tags: [agent, tools, facade, contracts, datasource]
 
 # Agent Tool Facade Foundation
 
-> **Implementation state: complete (2026-08-01).** `accepted` 表示本設計已採納；
+> **Implementation state: complete (2026-08-02).** `accepted` 表示本設計已採納；
 > 本文件末段記錄本次 Phase 1 工程交付與 exit-gate 證據。Pi Runtime integration
 > 仍維持 deferred。
 
@@ -81,6 +81,22 @@ MVP每次Tool call啟動一次bounded subprocess：
 Operator `cre` 維持local operations surface，不是這個binary的alias或subcommand。
 Binary另有一個host-only `approve_refresh` operation；它不出現在Pi Tool allowlist。
 
+`_runtime_facade(tool_name)` 依 selector 建構最小 dependency graph，不能因一個
+generic constructor 令 canonical read child 取得 writer surface：
+
+| Selector | Permitted dependencies |
+|---|---|
+| `describe_market_data` | `ReadService` |
+| `query_market_data` | `ReadService`、citation repository |
+| `get_citation_metadata` | citation repository |
+| `request_data_refresh` | `ReadService`、broker、approval store |
+| `get_refresh_status` | broker |
+| `approve_refresh` | broker、approval store |
+
+前三個 canonical-read processes 不得建立 `OperationalStore`、
+`OperationalRefreshBackend` 或 `RefreshBroker`。這是 process-level isolation，
+不只是不使用某個方法的 convention。
+
 ## Shared wire contract
 
 ### Request
@@ -138,8 +154,10 @@ Model可傳回的stateful references只有：
 key，讀取後立即close；key不放argv、environment、request JSON、disk或logs。
 Runtime restart會rotate key，而Phase 2同時令舊session及handles失效。
 `approval_id`使用durable mapping。Raw read cursor、job ID、`result_ref`和
-confirmation token不作model schema欄位。Session關閉後host撤銷scope；另一session
-即使共用`competition-agent` principal也不能重播handles。Competition handles
+confirmation token不作model schema欄位。`AgentToolHost` 對每個已開啟 scope 保留
+process-lifetime tombstone：session close、delete 或 expiry 後仍不可重用同一 scope；
+lock-protected concurrent duplicate 只有一個可成功。另一 session 即使共用
+`competition-agent` principal也不能重播handles。Competition handles
 最長30分鐘；`approval_id`沿用data plane的10分鐘expiry。
 
 ### Result
@@ -179,6 +197,31 @@ Stable error codes：
 | `RETRYABLE_UNAVAILABLE`／`TIMEOUT` | `4` |
 | `INTERNAL_ERROR` | `5` |
 | `SCHEMA_VIOLATION`／`PROTOCOL_ERROR`／`RESULT_TOO_LARGE` | `6` |
+
+### Cross-language selector catalog
+
+除 generic request/result envelope 外，wheel 另隨附 Draft 2020-12
+`agent_tool_contracts.v1.json` 和其 catalog schema。catalog 是 Node/Pi 等非 Python
+consumer 對 argv selector 的唯一 machine-readable authority；它覆蓋五個 model-facing
+selectors 和 host-only `approve_refresh`，而 selector 仍只存在 argv，不在 request JSON
+新增重複的 `tool` 欄位。
+
+每個 selector contract 固定：audience、arguments schema、successful `data` schema，
+以及 host-context `refresh_request_id` 的 `required|forbidden` policy。所有正常 nested
+object 預設 `additionalProperties: false`；`geography`、record `payload`、citation
+`locator` 和 refresh `bounded_scope` 是明確 named opaque projections，仍有 property
+count、key、scalar/array item 與 length bounds，不能接收不受限 nested object。
+
+generic result schema 以 conditional schema 鎖定 `ok|partial` 必有 object `data` 和
+`error: null`，`error` 必有 `data: null`；每個 error code、safe message、retryable 和
+exit mapping 與 Python `_ERROR_DETAILS` 完全一致。`jsonschema>=4,<5` 僅是 dev
+dependency；runtime loader 不依賴它，仍會 strict-load package asset、reject duplicate
+JSON keys 並比對 facade 的 exact model/host selector sets。
+
+`tests/fixtures/agent_tools/v1/tool-contract-fixtures.json` 提供 language-neutral
+valid、invalid、policy-invalid 和 partial examples。Python `Draft202012Validator` 同時
+驗證 catalog、generic envelope、selector schemas、fixtures 與 actual Facade projection；
+這讓 future Node launcher 可用同一份資產作 Ajv validation。
 
 ## Product capability authority
 
@@ -227,7 +270,10 @@ Input：
 
 `blocked` capability拒絕；`partial` capability保留manifest limitations。Facade先把
 capability template收窄成`ReadQuery`，model不能以filters繞過datasource／metric
-scope。
+scope。`as_of` 只接受完整
+`YYYY-MM-DDTHH:MM:SS[.1-6 digits]Z`：先 full regex，再以 UTC `fromisoformat`
+驗證 calendar；date-only、offset、lowercase `z`、空白 separator、leap second 及
+超過六位 fraction 全部拒絕。
 
 Output保留：
 
@@ -402,37 +448,65 @@ canonical production coverage。
 13. Clean wheel install可使用獨立Agent binary和packaged manifests／profiles，
     operator commands不可達。
 14. 完整offline datasource suite繼續通過。
+15. Draft 2020-12 selector catalog、catalog schema、generic request/result schema、
+    language-neutral valid/invalid/policy-invalid/partial fixtures，以及 actual Facade
+    projection 共同驗證；success/error conditional 和 `_ERROR_DETAILS` parity 不可漂移。
+16. Strict `as_of` regex/calendar tests涵蓋 valid whole/fractional UTC、date-only、
+    offset、lowercase、separator、leap second、invalid calendar date 和超長 fraction。
+17. 每個 selector constructor isolation 受測；三個 read selector 沒有 writer/broker
+    dependencies，status selector 沒有 read repository。
+18. Same scope close/reopen、concurrent duplicate、generated scope uniqueness 和 process
+    restart handle invalidation 受測；同一 process 不能重用已消耗 scope。
 
 Exit gate是：非Python consumer只依版本化schemas和fixtures即可安全整合，且
 registered Agent tool surface無法取得operator、raw evidence、collector、
 non-canonical result或canonical writer capability。
 
-## 實作證據（2026-08-01）
+## 實作證據（2026-08-02）
 
-- 新增 `nan_fung.agent_tools`：strict UTF-8 JSON wire parser/serializer、stable
+- `nan_fung.agent_tools` 現有 strict UTF-8 JSON wire parser/serializer、stable
   error/exit mapping、`AgentToolFacade`、runtime-scoped HMAC handles、packaged
-  capability/profile loaders、`AgentToolHost`/`AgentToolSession` 與獨立
-  `nan-fung-agent-tools <tool-name>` binary。Host 僅以 inherited FD 3 傳遞每次
-  runtime boot 的 256-bit key；launcher 使用 `shell=False`、獨立 process group、
-  10-second timeout/cancel 和 bounded stdout/stderr。
-- 新增 read-side `citation_projection_v1`、access-aware SQLite exact lineage
-  projection，以及 `0008_agent_tool_approval.sql`。approval mapping 和 event
-  皆為 immutable/append-only；Facade 不回傳 confirmation token、raw evidence、
-  CAS path、headers 或 artifact URI。
+  capability/profile/contract loaders、`AgentToolHost`/`AgentToolSession` 及獨立
+  `nan-fung-agent-tools <tool-name>` binary。Host 以 inherited FD 3 傳遞每個 runtime
+  boot 的 256-bit key；launcher 使用 `shell=False`、獨立 process group、10-second
+  timeout/cancel 和 bounded stdin/stdout/stderr。
+- 新增 Draft 2020-12 `agent_tool_contracts.v1` catalog、catalog schema、Python loader
+  及 language-neutral valid/invalid/policy-invalid/partial fixtures；generic result
+  conditional/error parity 與 selector success projections 均由 `jsonschema` tests
+  驗證。所有 catalog/schema JSON assets 已包含在 wheel。
+- `as_of` 已收窄為完整 UTC RFC3339 calendar instant；`_runtime_facade(tool_name)`
+  實作 selector-minimal dependencies，三個 canonical reads 不建 writer/broker；
+  `AgentToolHost` 對已使用 scope 保留 lock-protected process-lifetime tombstone，
+  close 後或 concurrent replay 均不可重用。
 - Bank Rate launch capability 固定為 canonical `metrics`、
   `boe.bank_rate.iudbedr`、`bank_rate_percent` decimal-string、UK scope；
   `uk.postcode-resolution` 維持 query-disabled partial approval integration，其他
   規劃外 coverage 維持 blocked。
-- Versioned JSON schemas、valid/invalid request/result fixtures 與語言無關 JSON
-  result fixtures 位於 `src/nan_fung/agent_tools/` 和
-  `tests/fixtures/agent_tools/v1/`；tests 覆蓋 strict protocol、handle replay、
-  prefix pagination、citation lineage、refresh/approval semantics、FD 3、crash、
-  timeout、cancel 和 process-group cleanup。
-- 驗證完成：`uv run pytest -q` 為 **349 passed, 15 deselected**；
-  `uv run python -m compileall -q src` 與 `git diff --check` 通過；`uv build`
-  成功。在新的 temporary venv 安裝 wheel 後，以 inherited-FD host harness 成功
-  呼叫 `nan-fung-agent-tools`，並確認 packaged schemas/assets/migration 和 binary
-  存在、`cre` 不能作為該 binary selector。
+- Phase 1 closure commands 全數通過：
+
+  ```bash
+  uv run pytest -q tests/test_agent_tool_contracts.py \
+    tests/test_agent_tool_cli_dependencies.py \
+    tests/test_agent_tool_host_scopes.py \
+    tests/test_agent_tool_capabilities.py \
+    tests/test_agent_tool_query_citations.py \
+    tests/test_agent_tool_process.py \
+    tests/test_agent_tool_refresh.py
+  # 69 passed
+  uv run pytest -q
+  # 381 passed, 15 deselected
+  uv run python -m compileall -q src
+  git diff --check
+  ```
+
+- `uv build --wheel` 成功；temporary clean venv 安裝 wheel（含正常 runtime
+  dependencies）後確認 contract/schema assets 可由 `importlib.resources` 讀取，
+  `load_tool_contracts()` 回傳六個 selectors，且 inherited-FD harness 成功呼叫
+  `nan-fung-agent-tools describe_market_data`。selector constructor isolation test
+  另確認 read selector 不建立 writer/broker dependencies。
+
+以上 exit gates 均通過，因此 `implementation_status: complete` 維持成立；Phase 2
+仍依其 2a／2b／2c mandatory gates 另行驗收。
 
 ## References
 

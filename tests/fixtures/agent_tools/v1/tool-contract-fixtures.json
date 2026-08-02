@@ -1,0 +1,299 @@
+{
+  "valid": {
+    "describe_market_data": {
+      "arguments": {},
+      "success_data": [
+        {
+          "capabilities": [
+            {
+              "capability_id": "uk.bank-rate-current",
+              "status": "supported",
+              "query_kinds": ["metrics"],
+              "query_disabled": false,
+              "datasource_ids": ["boe.bank_rate.iudbedr"],
+              "metric_ids": ["bank_rate"],
+              "geography": {"country_code": "GB"},
+              "refresh_profiles": ["bank-rate-latest"],
+              "limitations": ["Macro proxy only."],
+              "blocked_reason": null,
+              "canonical_availability": {
+                "canonical_available": true,
+                "retrieval_freshness": "fresh",
+                "observation_freshness": "fresh",
+                "degraded": false
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "query_market_data": {
+      "arguments": {
+        "capability_id": "uk.bank-rate-current",
+        "query_kind": "metrics",
+        "filters": {},
+        "as_of": "2026-08-01T12:00:00Z",
+        "limit": 2
+      },
+      "success_data": [
+        {
+          "anchor_as_of": "2026-08-01T12:00:00.000000Z",
+          "query_kind": "metrics",
+          "records": [
+            {
+              "observation_id": "obs_001",
+              "datasource_id": "boe.bank_rate.iudbedr",
+              "category": "macro",
+              "record_type": "metric",
+              "payload": {"bank_rate_percent": "4.25"},
+              "unit": "percent",
+              "definition": "Bank Rate",
+              "period_label": "Current",
+              "source_date": "2026-08-01",
+              "retrieved_at": "2026-08-01T12:00:00.000000Z",
+              "retrieval_freshness": "fresh",
+              "observation_freshness": "fresh",
+              "degraded": false,
+              "canonical_available": true,
+              "evidence_ids": ["evidence_001"],
+              "citation_refs": ["h1.citation.signature"],
+              "numeric": {
+                "value": "4.25",
+                "unit": "percent",
+                "definition": "Bank Rate",
+                "as_of": "2026-08-01T12:00:00.000000Z",
+                "source_date": "2026-08-01",
+                "period_label": "Current"
+              }
+            }
+          ],
+          "total_count": 1,
+          "canonical": true,
+          "access_class": "open",
+          "cursor_ref": null
+        }
+      ]
+    },
+    "get_citation_metadata": {
+      "arguments": {
+        "citation_refs": ["h1.citation.signature"]
+      },
+      "success_data": [
+        {
+          "citations": [
+            {
+              "citation_ref": "h1.citation.signature",
+              "observation_id": "obs_001",
+              "evidence_id": "evidence_001",
+              "datasource_id": "boe.bank_rate.iudbedr",
+              "publisher": "Bank of England",
+              "retrieved_at": "2026-08-01T12:00:00.000000Z",
+              "access_class": "open",
+              "data_kind": "official_statistic",
+              "confidence": "high",
+              "limitations": [],
+              "locator": {"series": "IUDBEDR"},
+              "title": "Bank Rate history",
+              "public_url": "https://www.bankofengland.co.uk/",
+              "published_at": null,
+              "source_updated_at": null,
+              "licence_or_attribution": null
+            }
+          ]
+        }
+      ]
+    },
+    "request_data_refresh": {
+      "arguments": {
+        "capability_id": "uk.bank-rate-current",
+        "datasource_id": "boe.bank_rate.iudbedr",
+        "request_profile": "bank-rate-latest",
+        "bounded_scope": {},
+        "intent": "user_requested_latest"
+      },
+      "success_data": [
+        {
+          "disposition": "accepted",
+          "job_ref": "h1.job.signature",
+          "approval_id": null,
+          "approval_expires_at": null,
+          "canonical_anchor": null,
+          "poll_after_seconds": 2,
+          "initial_state": "queued",
+          "submitted_at": "2026-08-01T12:00:00.000000Z"
+        },
+        {
+          "disposition": "deduplicated",
+          "job_ref": "h1.job.signature",
+          "approval_id": null,
+          "approval_expires_at": null,
+          "canonical_anchor": null,
+          "poll_after_seconds": 2,
+          "initial_state": "queued",
+          "submitted_at": "2026-08-01T12:00:00.000000Z"
+        },
+        {
+          "disposition": "already_fresh",
+          "job_ref": null,
+          "approval_id": null,
+          "approval_expires_at": null,
+          "canonical_anchor": "2026-08-01T12:00:00.000000Z",
+          "poll_after_seconds": null,
+          "initial_state": "already_fresh",
+          "submitted_at": "2026-08-01T12:00:00.000000Z"
+        },
+        {
+          "disposition": "approval_required",
+          "job_ref": null,
+          "approval_id": "approval_001",
+          "approval_expires_at": "2026-08-01T12:05:00.000000Z",
+          "canonical_anchor": null,
+          "poll_after_seconds": null,
+          "initial_state": "approval_required",
+          "submitted_at": "2026-08-01T12:00:00.000000Z"
+        }
+      ]
+    },
+    "get_refresh_status": {
+      "arguments": {
+        "job_ref": "h1.job.signature"
+      },
+      "success_data": [
+        {
+          "job_state": "queued",
+          "latest_attempt_status": null,
+          "retry_after_seconds": 2,
+          "terminal_error": null,
+          "promotion_status": null,
+          "canonical_changed": null
+        },
+        {
+          "job_state": "failed",
+          "latest_attempt_status": "failed",
+          "retry_after_seconds": null,
+          "terminal_error": {"code": "SOURCE_UNAVAILABLE", "retryable": true},
+          "promotion_status": "unchanged",
+          "canonical_changed": false
+        }
+      ]
+    },
+    "approve_refresh": {
+      "arguments": {
+        "approval_id": "approval_001",
+        "decision": "deny"
+      },
+      "success_data": [
+        {
+          "approval_id": "approval_001",
+          "decision": "deny",
+          "outcome": "recorded",
+          "disposition": "denied"
+        },
+        {
+          "disposition": "accepted",
+          "job_ref": "h1.job.signature",
+          "approval_id": null,
+          "approval_expires_at": null,
+          "canonical_anchor": null,
+          "poll_after_seconds": 2,
+          "initial_state": "queued",
+          "submitted_at": "2026-08-01T12:00:00.000000Z",
+          "approval_outcome": "recorded"
+        }
+      ]
+    }
+  },
+  "partial": {
+    "query_market_data": {
+      "data": {
+        "anchor_as_of": "2026-08-01T12:00:00.000000Z",
+        "query_kind": "metrics",
+        "records": [],
+        "total_count": 1,
+        "canonical": true,
+        "access_class": "open",
+        "cursor_ref": "h1.cursor.signature"
+      },
+      "warnings": ["response_truncated_to_protocol_limit"]
+    },
+    "get_citation_metadata": {
+      "data": {"citations": []},
+      "warnings": ["citation_unavailable"]
+    }
+  },
+  "invalid": [
+    {
+      "selector": "describe_market_data",
+      "target": "arguments",
+      "value": {"extra": true}
+    },
+    {
+      "selector": "query_market_data",
+      "target": "arguments",
+      "value": {
+        "capability_id": "uk.bank-rate-current",
+        "query_kind": "metrics",
+        "as_of": "2026-08-01Z"
+      }
+    },
+    {
+      "selector": "get_citation_metadata",
+      "target": "arguments",
+      "value": {"citation_refs": []}
+    },
+    {
+      "selector": "request_data_refresh",
+      "target": "success_data",
+      "value": {
+        "disposition": "accepted",
+        "job_ref": null,
+        "approval_id": null,
+        "approval_expires_at": null,
+        "canonical_anchor": null,
+        "poll_after_seconds": 2,
+        "initial_state": "queued",
+        "submitted_at": "2026-08-01T12:00:00.000000Z"
+      }
+    },
+    {
+      "selector": "get_refresh_status",
+      "target": "success_data",
+      "value": {
+        "job_state": "queued",
+        "latest_attempt_status": null,
+        "retry_after_seconds": 2,
+        "terminal_error": null,
+        "promotion_status": null
+      }
+    },
+    {
+      "selector": "approve_refresh",
+      "target": "arguments",
+      "value": {
+        "approval_id": "approval_001",
+        "decision": "maybe"
+      }
+    }
+  ],
+  "policy_invalid": [
+    {
+      "selector": "query_market_data",
+      "arguments": {
+        "capability_id": "london-prime-rent",
+        "query_kind": "metrics",
+        "filters": {},
+        "limit": 1
+      }
+    },
+    {
+      "selector": "request_data_refresh",
+      "arguments": {
+        "capability_id": "uk.bank-rate-current",
+        "datasource_id": "other.datasource",
+        "request_profile": "bank-rate-latest",
+        "bounded_scope": {},
+        "intent": "user_requested_latest"
+      }
+    }
+  ]
+}

@@ -84,5 +84,22 @@
       "allowed_capability_ids": ["uk.bank-rate-current"],
       "allowed_refresh_profiles": ["bank-rate-latest"]
     }
+  },
+  "approve_refresh": {
+    "schema_version": "agent_tool_request.v1",
+    "request_id": "call_approval_001",
+    "arguments": {
+      "approval_id": "approval_example_001",
+      "decision": "deny"
+    },
+    "host_context": {
+      "principal": "competition-agent",
+      "capability_scope_id": "scope_0123456789abcdef0123456789abcdef",
+      "turn_id": "turn_001",
+      "tool_call_id": "host_approval_001",
+      "allowed_access_classes": ["open"],
+      "allowed_capability_ids": ["uk.postcode-resolution"],
+      "allowed_refresh_profiles": ["onspd-one-postcode"]
+    }
   }
 }

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nan-fung.local/schemas/agent_tool_contract_catalog.v1.schema.json",
+  "title": "Agent tool selector contract catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_version", "contracts"],
+  "properties": {
+    "schema_version": {"const": "agent_tool_contracts.v1"},
+    "catalog_version": {"$ref": "#/$defs/non_empty_string"},
+    "contracts": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/contract"}
+    }
+  },
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "\\S"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selector",
+        "audience",
+        "refresh_request_id",
+        "arguments_schema",
+        "success_data_schema"
+      ],
+      "properties": {
+        "selector": {"$ref": "#/$defs/non_empty_string"},
+        "audience": {"enum": ["model", "host"]},
+        "refresh_request_id": {"enum": ["required", "forbidden"]},
+        "arguments_schema": {"type": "object"},
+        "success_data_schema": {"type": "object"}
+      }
+    }
+  }
+}

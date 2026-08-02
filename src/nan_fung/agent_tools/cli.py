@@ -19,7 +19,7 @@ from nan_fung.refresh_api import OperationalRefreshBackend, RefreshBroker, Refre
 
 from .facade import AgentToolFacade, HOST_TOOL_NAMES
 from .handles import load_handle_secret_from_fd
-from .manifest import AgentRefreshProfile, load_refresh_profiles
+from .manifest import AgentRefreshProfile, RefreshProfileCatalog, load_refresh_profiles
 from .protocol import (
     AgentToolError,
     InternalError,
@@ -64,7 +64,7 @@ def run_cli(
         request = read_request(stdin)
         candidate = request.get("request_id")
         request_id = candidate if isinstance(candidate, str) else None
-        selected_facade = facade or _runtime_facade()
+        selected_facade = facade or _runtime_facade(argv[0])
         response = selected_facade.execute(argv[0], request)
         validate_result(response)
     except AgentToolError as error:
@@ -90,26 +90,47 @@ def run_cli(
     return exit_code_for_result(response)
 
 
-def _runtime_facade() -> AgentToolFacade:
-    """Build the narrow production dependency graph for one child process."""
+def _runtime_facade(tool_name: str) -> AgentToolFacade:
+    """Build only the selected child process's minimum dependency graph."""
 
+    if tool_name not in HOST_TOOL_NAMES:
+        raise ValueError("unknown agent tool selector")
     handle_secret = load_handle_secret_from_fd()
-    config = load_config()
-    profiles = load_refresh_profiles()
-    store = OperationalStore(config.data_dir, backup_dir=config.backup_dir)
-    read_repository = SQLiteReadRepository(config.database_path)
-    refresh_profiles = {
-        profile.profile_id: _broker_profile(profile)
-        for profile in profiles.values()
-    }
-    return AgentToolFacade(
-        read_service=ReadService(read_repository, cursor_secret=handle_secret),
-        citation_projection=read_repository,
-        refresh_broker=RefreshBroker(
+
+    read_service: ReadService | None = None
+    citation_projection: SQLiteReadRepository | None = None
+    refresh_broker: RefreshBroker | None = None
+    approval_store: OperationalStore | None = None
+    profiles: RefreshProfileCatalog | None = None
+
+    if tool_name in {"describe_market_data", "query_market_data", "get_citation_metadata", "request_data_refresh"}:
+        config = load_config()
+        read_repository = SQLiteReadRepository(config.database_path)
+        if tool_name in {"describe_market_data", "query_market_data", "request_data_refresh"}:
+            read_service = ReadService(read_repository, cursor_secret=handle_secret)
+        if tool_name in {"query_market_data", "get_citation_metadata"}:
+            citation_projection = read_repository
+
+    if tool_name in {"request_data_refresh", "get_refresh_status", "approve_refresh"}:
+        config = load_config()
+        profiles = load_refresh_profiles()
+        store = OperationalStore(config.data_dir, backup_dir=config.backup_dir)
+        refresh_profiles = {
+            profile.profile_id: _broker_profile(profile)
+            for profile in profiles.values()
+        }
+        refresh_broker = RefreshBroker(
             refresh_profiles,
             OperationalRefreshBackend(store),
-        ),
-        approval_store=store,
+        )
+        if tool_name in {"request_data_refresh", "approve_refresh"}:
+            approval_store = store
+
+    return AgentToolFacade(
+        read_service=read_service,
+        citation_projection=citation_projection,
+        refresh_broker=refresh_broker,
+        approval_store=approval_store,
         profiles=profiles,
         handle_secret=handle_secret,
     )

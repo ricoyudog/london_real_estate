@@ -94,6 +94,9 @@ MODEL_TOOL_NAMES = frozenset(
 HOST_TOOL_NAMES = MODEL_TOOL_NAMES | {"approve_refresh"}
 MAX_MODEL_LIMIT = 20
 _POSTCODE = re.compile(r"^(?:GIR0AA|[A-Z]{1,2}[0-9][A-Z0-9]?[0-9][A-Z]{2})$")
+_RFC3339_UTC = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+)
 
 
 def _utc_now() -> datetime:
@@ -891,10 +894,10 @@ def _limit(value: object) -> int:
 def _as_of(value: object) -> datetime | None:
     if value is None:
         return None
-    if not isinstance(value, str) or not value.endswith("Z"):
+    if not isinstance(value, str) or _RFC3339_UTC.fullmatch(value) is None:
         raise InvalidArgument("as_of must be RFC3339 UTC")
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+        return datetime.fromisoformat(f"{value[:-1]}+00:00")
     except ValueError as error:
         raise InvalidArgument("as_of must be RFC3339 UTC") from error
 

@@ -16,6 +16,7 @@ import secrets
 import selectors
 import signal
 import subprocess
+import threading
 import time
 from typing import Protocol
 
@@ -77,6 +78,8 @@ class AgentToolHost:
         self._stderr_limit = stderr_limit
         self._handle_secret = bytes(secret)
         self._environment = dict(environment) if environment is not None else None
+        self._scope_lock = threading.Lock()
+        self._used_capability_scope_ids: set[str] = set()
 
     def open_session(
         self,
@@ -88,15 +91,44 @@ class AgentToolHost:
         capability_scope_id: str | None = None,
         clock: Callable[[], datetime] = _utc_now,
     ) -> "AgentToolSession":
-        return AgentToolSession(
-            self,
-            principal=principal,
-            allowed_access_classes=allowed_access_classes,
-            allowed_capability_ids=allowed_capability_ids,
-            allowed_refresh_profiles=allowed_refresh_profiles,
-            capability_scope_id=capability_scope_id,
-            clock=clock,
-        )
+        scope = self._reserve_scope(capability_scope_id)
+        try:
+            return AgentToolSession(
+                self,
+                principal=principal,
+                allowed_access_classes=allowed_access_classes,
+                allowed_capability_ids=allowed_capability_ids,
+                allowed_refresh_profiles=allowed_refresh_profiles,
+                capability_scope_id=scope,
+                clock=clock,
+            )
+        except Exception:
+            # An invalid caller configuration did not create a session, so it
+            # should not consume an injected test scope permanently.
+            with self._scope_lock:
+                self._used_capability_scope_ids.discard(scope)
+            raise
+
+    def _reserve_scope(self, capability_scope_id: str | None) -> str:
+        if capability_scope_id is not None:
+            if (
+                not isinstance(capability_scope_id, str)
+                or not capability_scope_id
+                or len(capability_scope_id) > 256
+            ):
+                raise ValueError("capability_scope_id must be a bounded non-empty string")
+            with self._scope_lock:
+                if capability_scope_id in self._used_capability_scope_ids:
+                    raise ValueError("capability_scope_id has already been used by this host")
+                self._used_capability_scope_ids.add(capability_scope_id)
+            return capability_scope_id
+
+        while True:
+            generated = f"scope_{secrets.token_urlsafe(24)}"
+            with self._scope_lock:
+                if generated not in self._used_capability_scope_ids:
+                    self._used_capability_scope_ids.add(generated)
+                    return generated
 
     def invoke(
         self,
@@ -247,7 +279,7 @@ class AgentToolSession:
         return self._scope
 
     def close(self) -> None:
-        """Revoke local scope state; later calls cannot replay its handles."""
+        """Discard local state; the host keeps this scope tombstoned."""
 
         self._closed = True
         self._refresh_ids.clear()

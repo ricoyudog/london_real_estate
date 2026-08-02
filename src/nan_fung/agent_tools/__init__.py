@@ -11,6 +11,13 @@ from .manifest import (
     load_capability_manifest,
     load_refresh_profiles,
 )
+from .tool_contracts import (
+    ToolContract,
+    ToolContractCatalog,
+    ToolContractError,
+    default_tool_contracts,
+    load_tool_contracts,
+)
 
 __all__ = [
     "AgentToolFacade",
@@ -23,8 +30,13 @@ __all__ = [
     "MODEL_TOOL_NAMES",
     "ManifestError",
     "RefreshProfileCatalog",
+    "ToolContract",
+    "ToolContractCatalog",
+    "ToolContractError",
+    "default_tool_contracts",
     "load_capability_manifest",
     "load_refresh_profiles",
+    "load_tool_contracts",
     "main",
     "run_cli",
 ]

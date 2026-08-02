@@ -15,6 +15,7 @@ nan-fung-agent-tools = "nan_fung.agent_tools.cli:main"
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4,<5",
     "pytest>=8.4,<9",
 ]
 

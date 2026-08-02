@@ -4,9 +4,44 @@
 
 Every case should verify that the agent:
 
-- cites each material data source, publication date, and confidence level;
+- cites each material data source, publication date, and confidence level; when
+  `published_at` is `null`, emits an explicit publication-date warning rather
+  than inventing one;
 - separates objective facts from AI inferences;
+- keeps datasource confidence, fact confidence, and inference confidence as
+  separate fields rather than treating one as evidence for another;
 - labels missing, stale, or incompatible data instead of inventing values.
+
+## Catalog scope and Phase 2 runtime mapping
+
+This file remains the **product acceptance catalog**. It does not say that the
+Phase 2 runtime supports all ten questions. The initial runtime is a Bank Rate
+vertical slice; product coverage is determined by the versioned capability
+manifest, not by a Skill or a test question.
+
+| Product case | Phase 2 treatment |
+|---|---|
+| TC-01 | Blocked-coverage representative. The runtime may at most describe current coverage; it must not query/refresh, produce a number/citation, or imply Prime rent is available. |
+| TC-02–TC-04 | Deferred product acceptance pending the corresponding canonical capabilities. |
+| TC-05 | Executable as a **partial Bank Rate** vertical slice: grounded UK macro facts plus clearly qualified London office inference; it does not make rent/transaction data available. |
+| TC-06–TC-08 | Deferred product acceptance pending canonical event, vacancy, ESG, and transaction coverage. |
+| TC-09 | Opt-in composite smoke only. It cannot replace deterministic runtime gates or imply full daily-brief coverage. |
+| TC-10 | Deferred product acceptance pending complete submarket canonical coverage. |
+
+### Runtime-derived time fixtures
+
+The Phase 2 deterministic runner derives the following rules from this catalog:
+
+- A material date/period omitted by the user requires clarification before any
+  data call; explicit `latest` uses canonical latest.
+- Explicit historical/as-of requests query that canonical anchor and do not
+  silently refresh it.
+- Relative-time fixtures use fixed absolute start/end boundaries in
+  `Europe/London`; tests must not depend on the machine's current date or time
+  zone.
+- A terminal refresh is not a market-data result: the runner re-queries
+  canonical data and preserves last-good data with stale/degraded/partial
+  warnings when refresh fails.
 
 ## TC-01: Prime rent lookup (simple)
 

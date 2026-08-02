@@ -1,0 +1,548 @@
+{
+  "schema_version": "agent_tool_contracts.v1",
+  "catalog_version": "2026-08-02.v1",
+  "contracts": [
+    {
+      "selector": "describe_market_data",
+      "audience": "model",
+      "refresh_request_id": "forbidden",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "maxProperties": 0
+      },
+      "success_data_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capabilities"],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "capability_id",
+                "status",
+                "query_kinds",
+                "query_disabled",
+                "datasource_ids",
+                "metric_ids",
+                "geography",
+                "refresh_profiles",
+                "limitations",
+                "blocked_reason",
+                "canonical_availability"
+              ],
+              "properties": {
+                "capability_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "status": {"enum": ["supported", "partial", "blocked"]},
+                "query_kinds": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": {"enum": ["metrics", "supply", "events", "geographies", "health"]},
+                  "uniqueItems": true
+                },
+                "query_disabled": {"type": "boolean"},
+                "datasource_ids": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "metric_ids": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "geography": {
+                  "type": "object",
+                  "maxProperties": 16,
+                  "propertyNames": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "additionalProperties": {
+                    "oneOf": [
+                      {"type": "string", "minLength": 1, "maxLength": 4096},
+                      {"type": "number"},
+                      {"type": "boolean"},
+                      {"type": "null"},
+                      {
+                        "type": "array",
+                        "maxItems": 64,
+                        "items": {
+                          "type": ["string", "number", "boolean", "null"],
+                          "maxLength": 4096
+                        }
+                      }
+                    ]
+                  }
+                },
+                "refresh_profiles": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "limitations": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "blocked_reason": {"type": ["string", "null"], "maxLength": 4096},
+                "canonical_availability": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "canonical_available",
+                    "retrieval_freshness",
+                    "observation_freshness",
+                    "degraded"
+                  ],
+                  "properties": {
+                    "canonical_available": {"type": ["boolean", "null"]},
+                    "retrieval_freshness": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "observation_freshness": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "degraded": {"type": ["boolean", "null"]}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "selector": "query_market_data",
+      "audience": "model",
+      "refresh_request_id": "forbidden",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability_id", "query_kind"],
+        "properties": {
+          "capability_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+          "query_kind": {"enum": ["metrics", "supply", "events", "geographies", "health"]},
+          "filters": {
+            "type": "object",
+            "additionalProperties": false,
+            "maxProperties": 10,
+            "properties": {
+              "datasource_id": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "category": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "record_type": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "metric_id": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "geography_code": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "provider": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "observation_id": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "evidence_id": {"type": ["string", "array"], "minLength": 1, "maxLength": 512, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "minItems": 1, "maxItems": 50},
+              "source_date_from": {"type": "string", "minLength": 1, "maxLength": 512},
+              "source_date_to": {"type": "string", "minLength": 1, "maxLength": 512}
+            }
+          },
+          "as_of": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$",
+            "format": "date-time"
+          },
+          "cursor_ref": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 20}
+        }
+      },
+      "success_data_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "anchor_as_of",
+          "query_kind",
+          "records",
+          "total_count",
+          "canonical",
+          "access_class",
+          "cursor_ref"
+        ],
+        "properties": {
+          "anchor_as_of": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+          "query_kind": {"enum": ["metrics", "supply", "events", "geographies", "health"]},
+          "records": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "observation_id",
+                "datasource_id",
+                "category",
+                "record_type",
+                "payload",
+                "unit",
+                "definition",
+                "period_label",
+                "source_date",
+                "retrieved_at",
+                "retrieval_freshness",
+                "observation_freshness",
+                "degraded",
+                "canonical_available",
+                "evidence_ids",
+                "citation_refs"
+              ],
+              "properties": {
+                "observation_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "datasource_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "category": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "record_type": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "payload": {
+                  "type": "object",
+                  "maxProperties": 64,
+                  "propertyNames": {"type": "string", "minLength": 1, "maxLength": 256},
+                  "additionalProperties": {
+                    "oneOf": [
+                      {"type": "string", "minLength": 1, "maxLength": 4096},
+                      {"type": "number"},
+                      {"type": "boolean"},
+                      {"type": "null"},
+                      {
+                        "type": "array",
+                        "maxItems": 64,
+                        "items": {
+                          "type": ["string", "number", "boolean", "null"],
+                          "maxLength": 4096
+                        }
+                      }
+                    ]
+                  }
+                },
+                "unit": {"type": ["string", "null"], "maxLength": 4096},
+                "definition": {"type": ["string", "null"], "maxLength": 4096},
+                "period_label": {"type": ["string", "null"], "maxLength": 4096},
+                "source_date": {"type": ["string", "null"], "format": "date"},
+                "retrieved_at": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                "retrieval_freshness": {"type": "string", "minLength": 1, "maxLength": 64},
+                "observation_freshness": {"type": "string", "minLength": 1, "maxLength": 64},
+                "degraded": {"type": "boolean"},
+                "canonical_available": {"type": "boolean"},
+                "evidence_ids": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "citation_refs": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "numeric": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["value", "unit", "definition", "as_of", "source_date", "period_label"],
+                  "properties": {
+                    "value": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+                    "unit": {"type": ["string", "null"], "maxLength": 4096},
+                    "definition": {"type": ["string", "null"], "maxLength": 4096},
+                    "as_of": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                    "source_date": {"type": ["string", "null"], "format": "date"},
+                    "period_label": {"type": ["string", "null"], "maxLength": 4096}
+                  }
+                }
+              }
+            }
+          },
+          "total_count": {"type": "integer", "minimum": 0},
+          "canonical": {"type": "boolean"},
+          "access_class": {"type": ["string", "null"], "maxLength": 256},
+          "cursor_ref": {"type": ["string", "null"], "maxLength": 4096}
+        }
+      }
+    },
+    {
+      "selector": "get_citation_metadata",
+      "audience": "model",
+      "refresh_request_id": "forbidden",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["citation_refs"],
+        "properties": {
+          "citation_refs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+            "uniqueItems": true
+          }
+        }
+      },
+      "success_data_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["citations"],
+        "properties": {
+          "citations": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "citation_ref",
+                "observation_id",
+                "evidence_id",
+                "datasource_id",
+                "publisher",
+                "retrieved_at",
+                "access_class",
+                "data_kind",
+                "confidence",
+                "limitations",
+                "locator",
+                "title",
+                "public_url",
+                "published_at",
+                "source_updated_at",
+                "licence_or_attribution"
+              ],
+              "properties": {
+                "citation_ref": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "observation_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "evidence_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "datasource_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "publisher": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "retrieved_at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                "access_class": {"type": "string", "minLength": 1, "maxLength": 256},
+                "data_kind": {"type": "string", "minLength": 1, "maxLength": 256},
+                "confidence": {"type": "string", "minLength": 1, "maxLength": 256},
+                "limitations": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                  "uniqueItems": true
+                },
+                "locator": {
+                  "type": "object",
+                  "maxProperties": 64,
+                  "propertyNames": {"type": "string", "minLength": 1, "maxLength": 256},
+                  "additionalProperties": {
+                    "oneOf": [
+                      {"type": "string", "minLength": 1, "maxLength": 4096},
+                      {"type": "number"},
+                      {"type": "boolean"},
+                      {"type": "null"},
+                      {
+                        "type": "array",
+                        "maxItems": 64,
+                        "items": {
+                          "type": ["string", "number", "boolean", "null"],
+                          "maxLength": 4096
+                        }
+                      }
+                    ]
+                  }
+                },
+                "title": {"type": ["string", "null"], "maxLength": 4096},
+                "public_url": {"type": ["string", "null"], "maxLength": 4096},
+                "published_at": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                "source_updated_at": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                "licence_or_attribution": {"type": ["string", "null"], "maxLength": 4096}
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "selector": "request_data_refresh",
+      "audience": "model",
+      "refresh_request_id": "required",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability_id", "datasource_id", "request_profile", "bounded_scope", "intent"],
+        "properties": {
+          "capability_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+          "datasource_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+          "request_profile": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+          "bounded_scope": {
+            "type": "object",
+            "maxProperties": 20,
+            "propertyNames": {"type": "string", "minLength": 1, "maxLength": 128},
+            "additionalProperties": {
+              "oneOf": [
+                {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "\\S"},
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "items": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "\\S"}
+                }
+              ]
+            }
+          },
+          "intent": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"}
+        }
+      },
+      "success_data_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "disposition",
+          "job_ref",
+          "approval_id",
+          "approval_expires_at",
+          "canonical_anchor",
+          "poll_after_seconds",
+          "initial_state",
+          "submitted_at"
+        ],
+        "properties": {
+          "disposition": {"enum": ["accepted", "deduplicated", "already_fresh", "approval_required"]},
+          "job_ref": {"type": ["string", "null"], "maxLength": 4096},
+          "approval_id": {"type": ["string", "null"], "maxLength": 4096},
+          "approval_expires_at": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+          "canonical_anchor": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+          "poll_after_seconds": {"type": ["integer", "null"], "minimum": 1},
+          "initial_state": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+          "submitted_at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"disposition": {"enum": ["accepted", "deduplicated"]}}},
+            "then": {
+              "properties": {
+                "job_ref": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "approval_id": {"type": "null"},
+                "approval_expires_at": {"type": "null"},
+                "canonical_anchor": {"type": "null"},
+                "poll_after_seconds": {"type": "integer", "minimum": 1}
+              }
+            }
+          },
+          {
+            "if": {"properties": {"disposition": {"const": "already_fresh"}}},
+            "then": {
+              "properties": {
+                "job_ref": {"type": "null"},
+                "approval_id": {"type": "null"},
+                "approval_expires_at": {"type": "null"},
+                "canonical_anchor": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                "poll_after_seconds": {"type": "null"}
+              }
+            }
+          },
+          {
+            "if": {"properties": {"disposition": {"const": "approval_required"}}},
+            "then": {
+              "properties": {
+                "job_ref": {"type": "null"},
+                "approval_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+                "approval_expires_at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+                "canonical_anchor": {"type": "null"},
+                "poll_after_seconds": {"type": "null"}
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "selector": "get_refresh_status",
+      "audience": "model",
+      "refresh_request_id": "forbidden",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["job_ref"],
+        "properties": {
+          "job_ref": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"}
+        }
+      },
+      "success_data_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_state",
+          "latest_attempt_status",
+          "retry_after_seconds",
+          "terminal_error",
+          "promotion_status",
+          "canonical_changed"
+        ],
+        "properties": {
+          "job_state": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+          "latest_attempt_status": {"type": ["string", "null"], "maxLength": 128},
+          "retry_after_seconds": {"type": ["integer", "null"], "minimum": 0},
+          "terminal_error": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["code", "retryable"],
+            "properties": {
+              "code": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+              "retryable": {"type": "boolean"}
+            }
+          },
+          "promotion_status": {"type": ["string", "null"], "maxLength": 128},
+          "canonical_changed": {"type": ["boolean", "null"]}
+        }
+      }
+    },
+    {
+      "selector": "approve_refresh",
+      "audience": "host",
+      "refresh_request_id": "forbidden",
+      "arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["approval_id", "decision"],
+        "properties": {
+          "approval_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+          "decision": {"enum": ["approve", "deny"]}
+        }
+      },
+      "success_data_schema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["approval_id", "decision", "outcome", "disposition"],
+            "properties": {
+              "approval_id": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+              "decision": {"const": "deny"},
+              "outcome": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+              "disposition": {"const": "denied"}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "disposition",
+              "job_ref",
+              "approval_id",
+              "approval_expires_at",
+              "canonical_anchor",
+              "poll_after_seconds",
+              "initial_state",
+              "submitted_at",
+              "approval_outcome"
+            ],
+            "properties": {
+              "disposition": {"enum": ["accepted", "deduplicated", "already_fresh", "approval_required"]},
+              "job_ref": {"type": ["string", "null"], "maxLength": 4096},
+              "approval_id": {"type": ["string", "null"], "maxLength": 4096},
+              "approval_expires_at": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+              "canonical_anchor": {"type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+              "poll_after_seconds": {"type": ["integer", "null"], "minimum": 1},
+              "initial_state": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+              "submitted_at": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$", "format": "date-time"},
+              "approval_outcome": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"}
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

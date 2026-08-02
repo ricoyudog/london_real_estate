@@ -7,24 +7,166 @@
   "required": ["schema_version", "request_id", "status", "data", "warnings", "error"],
   "properties": {
     "schema_version": {"const": "agent_tool_result.v1"},
-    "request_id": {"type": ["string", "null"], "maxLength": 256},
-    "status": {"enum": ["ok", "partial", "error"]},
-    "data": {},
-    "warnings": {
-      "type": "array",
-      "items": {"anyOf": [{"type": "string"}, {"type": "object"}]}
-    },
-    "error": {
+    "request_id": {
       "anyOf": [
         {"type": "null"},
+        {"$ref": "#/$defs/non_empty_string"}
+      ]
+    },
+    "status": {"enum": ["ok", "partial", "error"]},
+    "data": {"type": ["object", "null"]},
+    "warnings": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/warning"}
+    },
+    "error": {
+      "anyOf": [{"type": "null"}, {"$ref": "#/$defs/stable_error"}]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["ok", "partial"]}}},
+      "then": {
+        "properties": {
+          "data": {"type": "object"},
+          "error": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "error"}}},
+      "then": {
+        "properties": {
+          "data": {"type": "null"},
+          "error": {"$ref": "#/$defs/stable_error"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S"
+    },
+    "warning": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "\\S"
+    },
+    "stable_error": {
+      "oneOf": [
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["code", "message", "retryable"],
           "properties": {
-            "code": {"type": "string"},
-            "message": {"type": "string"},
-            "retryable": {"type": "boolean"}
+            "code": {"const": "INVALID_ARGUMENT"},
+            "message": {"const": "The request arguments are invalid."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "INVALID_CURSOR"},
+            "message": {"const": "The cursor is invalid or expired."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "ACCESS_DENIED"},
+            "message": {"const": "Access to this capability is denied."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "CAPABILITY_BLOCKED"},
+            "message": {"const": "This capability is not available."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "POLICY_DENIED"},
+            "message": {"const": "The request is not allowed by policy."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "RETRYABLE_UNAVAILABLE"},
+            "message": {"const": "The requested service is temporarily unavailable."},
+            "retryable": {"const": true}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "TIMEOUT"},
+            "message": {"const": "The tool call timed out."},
+            "retryable": {"const": true}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "INTERNAL_ERROR"},
+            "message": {"const": "The tool could not complete safely."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "SCHEMA_VIOLATION"},
+            "message": {"const": "The request schema is invalid."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "PROTOCOL_ERROR"},
+            "message": {"const": "The tool protocol was violated."},
+            "retryable": {"const": false}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {"const": "RESULT_TOO_LARGE"},
+            "message": {"const": "The tool result exceeds the response limit."},
+            "retryable": {"const": false}
           }
         }
       ]

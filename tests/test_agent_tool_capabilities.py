@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from nan_fung.agent_tools import AgentToolFacade, load_capability_manifest, load_refresh_profiles
+from nan_fung.agent_tools.facade import _as_of
+from nan_fung.agent_tools.protocol import InvalidArgument, utc_timestamp
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "agent_tools" / "v1"
@@ -153,6 +155,7 @@ def test_query_disabled_partial_capability_is_not_a_query_bypass() -> None:
         ({"limit": 0}, "INVALID_ARGUMENT"),
         ({"limit": 21}, "INVALID_ARGUMENT"),
         ({"as_of": "2026-08-01T12:00:00+00:00"}, "INVALID_ARGUMENT"),
+        ({"as_of": "2026-08-01Z"}, "INVALID_ARGUMENT"),
     ],
 )
 def test_query_rejects_template_escape_and_model_bounds(
@@ -179,3 +182,38 @@ def test_query_rejects_an_invalid_host_access_class_before_data_access() -> None
 
     assert result["status"] == "error"
     assert _error_code(result) == "INVALID_ARGUMENT"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-08-01T12:00:00Z",
+        "2024-02-29T23:59:59.1Z",
+        "2024-02-29T23:59:59.123456Z",
+    ],
+)
+def test_as_of_accepts_only_strict_rfc3339_utc_instants(value: str) -> None:
+    parsed = _as_of(value)
+
+    assert parsed is not None
+    assert utc_timestamp(parsed).startswith(value.removesuffix("Z"))
+    assert utc_timestamp(parsed).endswith("Z")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-08-01",
+        "2026-08-01Z",
+        "2026-08-01 12:00:00Z",
+        "2026-08-01T12:00Z",
+        "2026-08-01T12:00:00+00:00",
+        "2026-08-01T12:00:00z",
+        "2026-08-01T12:00:00.1234567Z",
+        "2026-08-01T12:00:60Z",
+        "2026-02-30T12:00:00Z",
+    ],
+)
+def test_as_of_rejects_noncanonical_or_invalid_utc_inputs(value: str) -> None:
+    with pytest.raises(InvalidArgument):
+        _as_of(value)

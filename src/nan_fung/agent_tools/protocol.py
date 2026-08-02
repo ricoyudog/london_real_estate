@@ -236,7 +236,7 @@ def result(
     *,
     status: str,
     data: object = None,
-    warnings: list[object] | tuple[object, ...] = (),
+    warnings: list[str] | tuple[str, ...] = (),
     error: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the only model-facing result envelope."""
@@ -247,11 +247,16 @@ def result(
         if error is None:
             raise ValueError("error results need an error object")
         data = None
-    elif error is not None:
-        raise ValueError("successful results cannot contain error details")
+    else:
+        if error is not None:
+            raise ValueError("successful results cannot contain error details")
+        if not isinstance(data, Mapping):
+            raise ValueError("successful results need an object data payload")
     checked_warnings = list(warnings)
-    if not all(isinstance(item, (str, Mapping)) for item in checked_warnings):
-        raise ValueError("warnings must be strings or objects")
+    if len(checked_warnings) > 64 or not all(
+        isinstance(item, str) and item.strip() and len(item) <= 256 for item in checked_warnings
+    ):
+        raise ValueError("warnings must be bounded non-empty strings")
     return {
         "schema_version": RESULT_SCHEMA_VERSION,
         "request_id": request_id,
@@ -337,9 +342,11 @@ def validate_result(value: Mapping[str, object]) -> None:
         not isinstance(request_id, str) or not request_id or len(request_id) > 256
     ):
         raise ProtocolError("child result request_id is invalid")
-    if not isinstance(value.get("warnings"), list):
+    if not isinstance(value.get("warnings"), list) or len(value["warnings"]) > 64:
         raise ProtocolError("child result warnings are invalid")
-    if not all(isinstance(item, (str, Mapping)) for item in value["warnings"]):
+    if not all(
+        isinstance(item, str) and item.strip() and len(item) <= 256 for item in value["warnings"]
+    ):
         raise ProtocolError("child result warnings are invalid")
     status = value["status"]
     error = value.get("error")
@@ -363,6 +370,8 @@ def validate_result(value: Mapping[str, object]) -> None:
             raise ProtocolError("child error details are not stable")
     elif error is not None:
         raise ProtocolError("success result contains error")
+    elif not isinstance(value.get("data"), Mapping):
+        raise ProtocolError("success result data is invalid")
 
 
 def utc_timestamp(value: datetime) -> str:
@@ -435,7 +444,7 @@ def _reject_non_json_constant(value: str) -> object:
 
 
 def _safe_request_id(value: object) -> str | None:
-    if isinstance(value, str) and value and len(value) <= 256:
+    if isinstance(value, str) and value.strip() and len(value) <= 256:
         return value
     return None
 
