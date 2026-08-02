@@ -14,7 +14,11 @@ const ctx = {
 
 test("dashboard overview derives its Bank Rate and coverage from scoped Facade results", async () => {
   const launcher = new DashboardLauncher();
-  const service = new DashboardService({ ctx, launcher });
+  const service = new DashboardService({
+    ctx,
+    launcher,
+    deployment: { mode: "demo", fixture_label: "Deterministic Bank Rate fixture" },
+  });
 
   const overview = await service.overview({ principal: "anonymous", scope_id: "scope_browser" });
 
@@ -25,6 +29,7 @@ test("dashboard overview derives its Bank Rate and coverage from scoped Facade r
   assert.deepEqual(queryContext.allowed_capability_ids, ["uk.bank-rate-current"]);
   assert.equal(overview.bank_rate.value, "5.25");
   assert.equal(overview.bank_rate.source?.publisher, "Bank of England");
+  assert.deepEqual(overview.deployment, { mode: "demo", fixture_label: "Deterministic Bank Rate fixture" });
   assert.equal(overview.coverage.find((item) => item.capability_id === "london-prime-rent")?.status, "blocked");
   assert.equal(JSON.stringify(overview).includes("h1.secret-citation-handle"), false);
 });

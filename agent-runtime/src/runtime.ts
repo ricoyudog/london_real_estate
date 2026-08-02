@@ -284,6 +284,12 @@ export class TurnContext {
 
 export type TurnState = "running" | "awaiting_approval" | "completed" | "cancelled" | "failed";
 
+export type TurnFailureReason =
+  | "TURN_DEADLINE_EXCEEDED"
+  | "NO_FINAL_ARTIFACT"
+  | "NUMERIC_GUARD_REJECTED"
+  | "RUNTIME_UNAVAILABLE";
+
 export type AgentEvent =
   | { readonly type: "turn.started" }
   | { readonly type: "tool.started"; readonly tool: string }
@@ -292,7 +298,7 @@ export type AgentEvent =
   | { readonly type: "approval.resolved"; readonly decision: "approve" | "deny" }
   | { readonly type: "artifact.final" }
   | { readonly type: "turn.completed"; readonly terminal_state: "completed" | "cancelled" }
-  | { readonly type: "turn.failed" };
+  | { readonly type: "turn.failed"; readonly reason_code: TurnFailureReason };
 
 export class LifecycleReducer {
   #state: TurnState = "running";

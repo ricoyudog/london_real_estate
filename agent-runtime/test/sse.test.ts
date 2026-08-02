@@ -104,6 +104,15 @@ test("(j) projects cancelled lifecycle completion without an artifact", () => {
   assert.deepEqual(hub.events(sessionId).at(-1)?.payload, { terminal_state: "cancelled" });
 });
 
+test("(j.1) projects the safe turn failure reason", () => {
+  const reducer = new LifecycleReducer();
+  const hub = new SseHub(registry());
+  reducer.transition({ type: "turn.started" });
+  reducer.transition({ type: "turn.failed", reason_code: "NO_FINAL_ARTIFACT" });
+  for (const item of reducer.events()) projectLifecycle(sessionId, turnId, hub, reducer, item);
+  assert.deepEqual(hub.events(sessionId).at(-1)?.payload, { reason_code: "NO_FINAL_ARTIFACT" });
+});
+
 test("(k) replays before entering the live tail", async (t) => {
   const sessionRegistry = registry();
   const created = sessionRegistry.createSession({ principal: "operator", allowed_access_classes: [], allowed_capability_ids: [], allowed_refresh_profiles: [] });
@@ -146,6 +155,7 @@ test("(l) blocks completed numeric chunks before they reach the ring and fails t
   const events = hub.events(sessionId);
   assert.equal(events.filter((item) => item.type === "message.delta").length, 0);
   assert.equal(events.filter((item) => item.type === "turn.failed").length, 1);
+  assert.equal(events.find((item) => item.type === "turn.failed")?.payload.reason_code, "NUMERIC_GUARD_REJECTED");
 });
 
 function listen(server: http.Server): Promise<void> {

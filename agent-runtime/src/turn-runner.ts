@@ -1,7 +1,7 @@
 import type { BootedRuntime } from "./boot.ts";
 import type { ToolResult } from "./facade-launcher.ts";
 import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
-import { LifecycleReducer, type AgentEvent, TurnContext, TurnDeadlineExceeded, defaultTurnLimits } from "./runtime.ts";
+import { LifecycleReducer, type AgentEvent, TurnContext, TurnDeadlineExceeded, defaultTurnLimits, type TurnFailureReason } from "./runtime.ts";
 import { modelVisibleBytes } from "./tools.ts";
 
 export type RunOptions = { readonly now?: () => number; readonly onTurnCreated?: (turn: TurnContext) => void; readonly populateLedger?: boolean };
@@ -11,6 +11,7 @@ export type TurnOutcome = {
   readonly artifact?: unknown;
   readonly events: readonly AgentEvent[];
   readonly clarification_requested?: boolean;
+  readonly reason_code?: TurnFailureReason;
 };
 
 type SessionEvent = Readonly<Record<string, unknown>>;
@@ -65,8 +66,8 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
   let abortIssued = false;
   booted.setTurnPolicies({
     preToolCall: (toolName, args, active) => beforeTool(state, toolName, args, active),
-    onResult: (toolName, result, active) => {
-      afterTool(state, toolName, result, active);
+    onResult: (toolName, args, result, active) => {
+      afterTool(state, toolName, args, result, active);
       if (!abortIssued && state.artifact !== undefined) {
         abortIssued = true;
         void session.abort().catch(() => undefined);
@@ -99,8 +100,8 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     else await runBeforeDeadline(session, turn, continueSession === undefined ? () => session.prompt(userMessage) : continueSession);
   } catch (error) {
     if (error instanceof TurnDeadlineExceeded) {
-      state.reducer.transition({ type: "turn.failed" });
-      return outcome(state, turn, "failed");
+      state.reducer.transition({ type: "turn.failed", reason_code: "TURN_DEADLINE_EXCEEDED" });
+      return outcome(state, turn, "failed", "TURN_DEADLINE_EXCEEDED");
     }
     throw error;
   } finally {
@@ -117,11 +118,11 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     return outcome(state, turn, "completed");
   }
   if (rejectText || state.buffer.guardRejected) {
-    state.reducer.transition({ type: "turn.failed" });
-    return outcome(state, turn, "failed");
+    state.reducer.transition({ type: "turn.failed", reason_code: "NUMERIC_GUARD_REJECTED" });
+    return outcome(state, turn, "failed", "NUMERIC_GUARD_REJECTED");
   }
-  try { state.buffer.flush(); } catch (error) { if (error instanceof NumericGuardViolation) { state.reducer.transition({ type: "turn.failed" }); return outcome(state, turn, "failed"); } throw error; }
-  if (state.artifact === undefined) { state.reducer.transition({ type: "turn.failed" }); return outcome(state, turn, "failed"); }
+  try { state.buffer.flush(); } catch (error) { if (error instanceof NumericGuardViolation) { state.reducer.transition({ type: "turn.failed", reason_code: "NUMERIC_GUARD_REJECTED" }); return outcome(state, turn, "failed", "NUMERIC_GUARD_REJECTED"); } throw error; }
+  if (state.artifact === undefined) { state.reducer.transition({ type: "turn.failed", reason_code: "NO_FINAL_ARTIFACT" }); return outcome(state, turn, "failed", "NO_FINAL_ARTIFACT"); }
   state.reducer.transition({ type: "artifact.final" });
   state.reducer.transition({ type: "turn.completed", terminal_state: "completed" });
   return outcome(state, turn, "completed");
@@ -140,7 +141,7 @@ function beforeTool(state: RunnerState, toolName: string, args: unknown, _turn: 
   return undefined;
 }
 
-function afterTool(state: RunnerState, toolName: string, result: ToolResult, turn: TurnContext): void {
+function afterTool(state: RunnerState, toolName: string, args: unknown, result: ToolResult, turn: TurnContext): void {
   if (result.status === "error") return;
   const data = result.data;
   const records = recordArray(data?.["records"]);
@@ -159,7 +160,7 @@ function afterTool(state: RunnerState, toolName: string, result: ToolResult, tur
       state.pollNotBefore.set(jobRef, state.now() + interval);
     }
   }
-  if (toolName === "get_refresh_status") updateRefreshState(state, data);
+  if (toolName === "get_refresh_status") updateRefreshState(state, args, data);
   if (toolName === "query_market_data") state.requeryRequired = false;
   if (toolName === "finalize_market_brief") state.artifact = result.data;
 }
@@ -177,7 +178,7 @@ function addQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown
       observation_ids: typeof observationId === "string" ? [observationId] : [],
       citation_refs: stringArray(record["citation_refs"]),
       ...(numeric === undefined ? {} : { numeric_projection: numeric }),
-      freshness: { retrieval_freshness: record["retrieval_freshness"], observation_freshness: record["observation_freshness"] },
+      freshness: { retrieval_freshness: record["retrieval_freshness"], observation_freshness: record["observation_freshness"], degraded: record["degraded"] },
     });
   }
 }
@@ -195,15 +196,15 @@ function enrichQueryLedger(turn: TurnContext, data: Readonly<Record<string, unkn
       observation_ids: typeof observationId === "string" ? [observationId] : [], citation_refs: [ref],
       numeric_projection: {
         published_at: citation["published_at"] ?? null,
-        datasource_confidence: citation["confidence"], source: citation["publisher"], anchor_as_of: query.anchor_as_of,
+        datasource_confidence: citation["confidence"], source: citation["publisher"], public_url: citation["public_url"] ?? null, anchor_as_of: query.anchor_as_of,
       },
     });
   }
 }
 
-function updateRefreshState(state: RunnerState, data: Readonly<Record<string, unknown>> | null): void {
-  if (data === null) return;
-  const jobRef = data?.["job_ref"];
+function updateRefreshState(state: RunnerState, args: unknown, data: Readonly<Record<string, unknown>> | null): void {
+  if (data === null || !isRecord(args)) return;
+  const jobRef = args["job_ref"];
   if (typeof jobRef !== "string") return;
   const jobState = data["job_state"];
   if (["succeeded", "empty", "failed", "dead_letter", "cancelled"].includes(typeof jobState === "string" ? jobState : "")) {
@@ -215,8 +216,8 @@ function updateRefreshState(state: RunnerState, data: Readonly<Record<string, un
   if (interval !== undefined) state.pollNotBefore.set(jobRef, state.now() + interval);
 }
 
-function outcome(state: RunnerState, turn: TurnContext, terminal_state: TurnOutcome["terminal_state"]): TurnOutcome {
-  return { turn, terminal_state, events: state.reducer.events(), ...(state.artifact === undefined ? {} : { artifact: state.artifact }) };
+function outcome(state: RunnerState, turn: TurnContext, terminal_state: TurnOutcome["terminal_state"], reason_code?: TurnFailureReason): TurnOutcome {
+  return { turn, terminal_state, events: state.reducer.events(), ...(state.artifact === undefined ? {} : { artifact: state.artifact }), ...(reason_code === undefined ? {} : { reason_code }) };
 }
 
 async function runBeforeDeadline(session: Session, turn: TurnContext, runPrompt: () => Promise<void>): Promise<void> {
@@ -229,8 +230,8 @@ async function runBeforeDeadline(session: Session, turn: TurnContext, runPrompt:
       new Promise<"deadline">((resolve) => { timeout = setTimeout(() => resolve("deadline"), remaining); }),
     ]);
     if (winner === "prompt") return;
-    await session.abort();
-    await prompt.catch(() => undefined);
+    void session.abort().catch(() => undefined);
+    void prompt.catch(() => undefined);
     throw new TurnDeadlineExceeded();
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);

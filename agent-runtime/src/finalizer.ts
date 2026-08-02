@@ -63,11 +63,12 @@ type NumericProjection = {
   readonly published_at: string | null;
   readonly datasource_confidence: Confidence;
   readonly source: string;
+  readonly public_url: string | null;
   readonly anchor_as_of?: string;
 };
 
 type NumericFields = Pick<NumericProjection, "value" | "unit" | "definition" | "as_of" | "source_date" | "period_label">;
-type CitationMetadata = Pick<NumericProjection, "published_at" | "datasource_confidence" | "source" | "anchor_as_of">;
+type CitationMetadata = Pick<NumericProjection, "published_at" | "datasource_confidence" | "source" | "public_url" | "anchor_as_of">;
 
 type CitationResolution = {
   readonly ref: string;
@@ -102,7 +103,7 @@ export type MarketBriefV1 = {
   readonly inferences: readonly InferenceDraft[];
   readonly limitations: readonly string[];
   readonly as_of: string | null;
-  readonly sources: readonly { readonly citation_ref: string; readonly source: string; readonly published_at: string | null }[];
+  readonly sources: readonly { readonly citation_ref: string; readonly source: string; readonly public_url: string | null; readonly published_at: string | null }[];
   readonly lineage: Readonly<Record<string, { readonly observation_ids: readonly string[]; readonly citation_refs: readonly string[] }>>;
   readonly freshness_warnings: readonly string[];
   readonly published_at: string | null;
@@ -229,8 +230,10 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
   const sources = [...references.values()].map(({ ref, projection }) => ({
     citation_ref: ref,
     source: projection.source,
+    public_url: projection.public_url,
     published_at: projection.published_at,
   }));
+  const freshness_warnings = freshnessWarnings(references);
   const published_at = sources.find((source) => source.published_at !== null)?.published_at ?? null;
   const publication_date_warning = published_at === null;
   const factConfidence: Record<string, Confidence> = {};
@@ -263,14 +266,14 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
   return {
     schema_version: "market_brief.v1",
     title: draft.title,
-    status: draft.status,
+    status: draft.status === "complete" && freshness_warnings.length > 0 ? "partial" : draft.status,
     facts,
     inferences: draft.inferences,
     limitations: draft.limitations,
     as_of: ledger.anchor_as_of,
     sources,
     lineage,
-    freshness_warnings: [],
+    freshness_warnings,
     published_at,
     publication_date_warning,
     datasource_confidence: datasourceConfidence,
@@ -388,11 +391,27 @@ const parseCitationMetadata = (input: unknown): CitationMetadata | null => {
   const publishedAt = input.published_at;
   const confidence = input.datasource_confidence;
   const source = input.source;
+  const publicUrl = input.public_url;
   const anchorAsOf = input.anchor_as_of;
   if (publishedAt !== null && typeof publishedAt !== "string") return null;
   if (!isMember(confidence, confidences) || typeof source !== "string") return null;
+  if (publicUrl !== undefined && publicUrl !== null && typeof publicUrl !== "string") return null;
   if (anchorAsOf !== undefined && typeof anchorAsOf !== "string") return null;
-  return { published_at: publishedAt, datasource_confidence: confidence, source, ...(anchorAsOf === undefined ? {} : { anchor_as_of: anchorAsOf }) };
+  return { published_at: publishedAt, datasource_confidence: confidence, source, public_url: typeof publicUrl === "string" ? publicUrl : null, ...(anchorAsOf === undefined ? {} : { anchor_as_of: anchorAsOf }) };
+};
+
+const freshnessWarnings = (references: ReadonlyMap<string, CitationResolution>): readonly string[] => {
+  let stale = false;
+  let degraded = false;
+  for (const { entry } of references.values()) {
+    if (!isRecord(entry.freshness)) continue;
+    stale ||= entry.freshness.retrieval_freshness === "stale" || entry.freshness.observation_freshness === "stale";
+    degraded ||= entry.freshness.degraded === true;
+  }
+  return [
+    ...(stale ? ["Canonical data is stale; the last-good value is retained."] : []),
+    ...(degraded ? ["Canonical data is degraded; verify freshness before relying on it."] : []),
+  ];
 };
 
 const requireRecord = (input: unknown): UnknownRecord => {

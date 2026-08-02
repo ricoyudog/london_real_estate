@@ -18,7 +18,8 @@ import type { TurnContext, SessionContext } from "./runtime.ts";
 import { createSessionTools, type SessionToolDependencies } from "./tools.ts";
 
 const MAX_SKILL_BYTES = 64 * 1024;
-const DEPLOYMENT_MODEL = "glm/GLM-5.2";
+export const DEPLOYMENT_MODEL = "glm/GLM-5.2";
+export const RUNTIME_ENGINE = "pi-agent-session" as const;
 const DEPLOYMENT_PROVIDER = "glm";
 const DEPLOYMENT_MODEL_ID = "GLM-5.2";
 const activeToolNames = [
@@ -51,6 +52,10 @@ export interface BootedRuntime {
   readonly getTurnContext: () => TurnContext | undefined;
   readonly setTurnContext: (turn: TurnContext | undefined) => void;
   readonly setTurnPolicies: (policies: Pick<SessionToolDependencies, "onResult" | "preToolCall">) => void;
+  readonly runtimeIdentity: {
+    readonly runtime_engine: typeof RUNTIME_ENGINE;
+    readonly model: string;
+  };
 }
 
 type ModelCollection = {
@@ -120,7 +125,7 @@ export async function bootRuntime(ctx: SessionContext, options: BootOptions = {}
     launcher,
     finalizeBrief,
     getTurnContext,
-    onResult: (toolName, result, turn) => policies.onResult?.(toolName, result, turn),
+    onResult: (toolName, args, result, turn) => policies.onResult?.(toolName, args, result, turn),
     preToolCall: (toolName, args, turn) => policies.preToolCall?.(toolName, args, turn),
   });
   assertExactTools(tools);
@@ -144,6 +149,7 @@ export async function bootRuntime(ctx: SessionContext, options: BootOptions = {}
   return {
     session: created.session, tools, ctx, launcher, finalizeBrief, getTurnContext, setTurnContext,
     setTurnPolicies: (next) => { policies = next; },
+    runtimeIdentity: { runtime_engine: RUNTIME_ENGINE, model: configuredModel },
   };
 }
 

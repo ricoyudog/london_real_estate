@@ -186,13 +186,16 @@ function finalizeFixture(draft: unknown, turn: TurnContext, launcher: RecordingL
       published_at: citation.published_at,
       datasource_confidence: citation.confidence,
       source: citation.publisher,
+      public_url: citation.public_url ?? null,
       anchor_as_of: anchor,
     },
-    freshness: { retrieval: record.retrieval_freshness, observation: record.observation_freshness },
+    freshness: {
+      retrieval_freshness: record.retrieval_freshness,
+      observation_freshness: record.observation_freshness,
+      degraded: record.degraded,
+    },
   });
-  const finalized = finalizeBrief({ schema_version: "market_brief_draft.v1", ...draft }, turn);
-  const stale = record.degraded === true;
-  return stale ? { ...finalized, freshness_warnings: ["Canonical Bank Rate is stale; last-good value retained."] } : finalized;
+  return finalizeBrief({ schema_version: "market_brief_draft.v1", ...draft }, turn);
 }
 
 function unavailableArtifact(draft: unknown): Readonly<Record<string, unknown>> {

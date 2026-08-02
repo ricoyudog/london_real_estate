@@ -17,6 +17,10 @@ type JsonRecord = Readonly<Record<string, unknown>>;
 
 export type DashboardOverviewV1 = {
   readonly schema_version: "dashboard_overview.v1";
+  readonly deployment: {
+    readonly mode: "demo" | "production";
+    readonly fixture_label: string | null;
+  };
   readonly bank_rate: {
     readonly status: "available" | "unavailable";
     readonly value: string | null;
@@ -51,10 +55,12 @@ export type DashboardOverviewV1 = {
 export class DashboardService {
   readonly #ctx: SessionContext;
   readonly #launcher: DashboardLauncher;
+  readonly #deployment: DashboardOverviewV1["deployment"];
 
-  constructor(options: { readonly ctx: SessionContext; readonly launcher: DashboardLauncher }) {
+  constructor(options: { readonly ctx: SessionContext; readonly launcher: DashboardLauncher; readonly deployment?: DashboardOverviewV1["deployment"] }) {
     this.#ctx = options.ctx;
     this.#launcher = options.launcher;
+    this.#deployment = options.deployment ?? { mode: "production", fixture_label: null };
   }
 
   async overview(session: DashboardSession): Promise<DashboardOverviewV1> {
@@ -75,6 +81,7 @@ export class DashboardService {
     const source = await this.#sourceFor(query, queryContext);
     return {
       schema_version: "dashboard_overview.v1",
+      deployment: this.#deployment,
       bank_rate: projectBankRate(query, source),
       coverage: projectCoverage(description),
     };

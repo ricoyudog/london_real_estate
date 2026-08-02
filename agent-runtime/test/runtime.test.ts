@@ -97,7 +97,7 @@ test("f: lifecycle reducer rejects a second terminal event", () => {
   reducer.transition({ type: "turn.completed", terminal_state: "completed" });
 
   // When/Then: another terminal event is rejected
-  assert.throws(() => reducer.transition({ type: "turn.failed" }), StateTransitionError);
+  assert.throws(() => reducer.transition({ type: "turn.failed", reason_code: "RUNTIME_UNAVAILABLE" }), StateTransitionError);
 });
 
 test("g: lifecycle reducer requires final artifact before successful completion", () => {
@@ -131,7 +131,7 @@ test("lifecycle reducer allows failed terminal without artifact", () => {
   reducer.transition({ type: "turn.started" });
 
   // When: it reaches the failed terminal event
-  reducer.transition({ type: "turn.failed" });
+  reducer.transition({ type: "turn.failed", reason_code: "RUNTIME_UNAVAILABLE" });
 
   // Then: it records failure without fabricating an artifact
   assert.equal(reducer.state(), "failed");

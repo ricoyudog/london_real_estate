@@ -3,7 +3,7 @@ import type * as http from "node:http";
 
 import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
 import type { RecoveryStore } from "./recovery.ts";
-import type { AgentEvent, LifecycleReducer } from "./runtime.ts";
+import type { AgentEvent, LifecycleReducer, TurnFailureReason } from "./runtime.ts";
 import { SessionRegistry } from "./sessions.ts";
 
 const EVENT_TYPES = ["session.started", "turn.started", "message.delta", "tool.started", "tool.completed", "approval.required", "approval.resolved", "artifact.final", "turn.completed", "turn.failed"] as const;
@@ -122,8 +122,8 @@ export class SseHub {
     for (const attachment of this.#attachments.get(sessionId) ?? []) this.#write(attachment, frame(event));
   }
 
-  failTurn(sessionId: string, turnId: string): void {
-    this.emit(sessionId, turnId, "turn.failed", {});
+  failTurn(sessionId: string, turnId: string, reason_code: TurnFailureReason): void {
+    this.emit(sessionId, turnId, "turn.failed", { reason_code });
   }
 
   close(sessionId: string): void {
@@ -180,7 +180,7 @@ export function streamModelText(sessionId: string, turnId: string, hub: SseHub, 
     buffer.append(chunk);
   } catch (error) {
     if (error instanceof NumericGuardViolation) {
-      hub.failTurn(sessionId, turnId);
+      hub.failTurn(sessionId, turnId, "NUMERIC_GUARD_REJECTED");
       return;
     }
     throw error;
@@ -206,7 +206,7 @@ export function projectLifecycle(sessionId: string, turnId: string, hub: SseHub,
     case "turn.completed":
       return hub.emit(sessionId, turnId, "turn.completed", { terminal_state: event.terminal_state });
     case "turn.failed":
-      return hub.emit(sessionId, turnId, "turn.failed", {});
+      return hub.emit(sessionId, turnId, "turn.failed", { reason_code: event.reason_code });
     default:
       return assertNever(event);
   }

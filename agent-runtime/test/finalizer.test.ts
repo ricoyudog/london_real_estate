@@ -205,6 +205,40 @@ test("finalizeBrief retains separately sourced confidence fields", () => {
   assert.equal(brief.inference_confidence["outlook"], "low");
 });
 
+test("finalizeBrief projects host source URLs and forces stale or degraded facts to partial", () => {
+  const turn = new TurnContext(session, defaultTurnLimits);
+  turn.addLedgerEntry({
+    kind: "query",
+    anchor_as_of: "2026-08-02T00:00:00Z",
+    observation_ids: ["observation-1"],
+    citation_refs: ["citation-1"],
+    numeric_projection: {
+      value: "5.25", unit: "percent", definition: "Bank Rate", as_of: "2026-08-01",
+      source_date: "2026-08-01", period_label: "Current",
+    },
+    freshness: { retrieval_freshness: "stale", observation_freshness: "fresh", degraded: true },
+  });
+  turn.addLedgerEntry({
+    kind: "citation",
+    anchor_as_of: "2026-08-02T00:00:00Z",
+    observation_ids: ["observation-1"],
+    citation_refs: ["citation-1"],
+    numeric_projection: {
+      published_at: "2026-08-01T09:00:00Z", datasource_confidence: "high",
+      source: "Bank of England", public_url: "https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp",
+    },
+  });
+
+  const brief = finalizeBrief({ ...validDraft(), facts: [validDraft().facts[0]], inferences: [] }, turn);
+
+  assert.equal(brief.status, "partial");
+  assert.deepEqual(brief.freshness_warnings, [
+    "Canonical data is stale; the last-good value is retained.",
+    "Canonical data is degraded; verify freshness before relying on it.",
+  ]);
+  assert.equal(brief.sources[0]?.public_url, "https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp");
+});
+
 test("finalizeBrief completes an unavailable zero-fact brief with an empty ledger", () => {
   // Given: unavailable coverage without canonical facts
   const draft: MarketBriefDraftV1 = { schema_version: "market_brief_draft.v1", title: "Coverage", status: "unavailable", facts: [], inferences: [], limitations: ["No canonical coverage."] };

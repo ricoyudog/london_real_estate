@@ -36,6 +36,8 @@ test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrec
     "tool.started", "tool.completed", "artifact.final", "turn.completed",
   ]);
   assert.equal(events[0]?.type, "session.started");
+  const started = events.find((event) => event.turn_id === turn && event.type === "turn.started");
+  assert.deepEqual(started?.payload, { runtime_engine: "pi-agent-session", model: FAUX_MODEL_REF });
   const artifact = artifactFrom(events);
   assertArtifact(artifact, false);
 
@@ -57,6 +59,11 @@ test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrec
   assertArtifact(record(recovered["artifact"])["artifact"], false);
   assert.equal(JSON.stringify({ events, lateEvents, replayEvents, recovered }).includes(session.bearer), false);
   assert.equal(fixture.logs.join("\n").includes(session.bearer), false);
+  assert.deepEqual(record(fixture.traces[0])["tool_sequence"], ["query_market_data", "get_citation_metadata", "finalize_market_brief"]);
+  assert.equal(record(fixture.traces[0])["terminal_state"], "completed");
+  assert.equal(record(fixture.traces[0])["runtime_engine"], "pi-agent-session");
+  assert.equal(JSON.stringify(fixture.traces).includes("Give the latest Bank Rate."), false);
+  assert.equal(JSON.stringify(fixture.traces).includes(session.bearer), false);
   writeEvidence("happy.json", { events, lateEvents, liveTail, replayEvents, recovered });
 });
 
@@ -111,8 +118,36 @@ test("published_at null and distinct confidence survive live, replay, and recove
   writeEvidence("published-null.json", { live, replayed, recovered });
 });
 
+test("runtime startup failures emit only the safe RUNTIME_UNAVAILABLE reason", async (t) => {
+  const dataDir = join(mkdtempSync(join(tmpdir(), "integration-runtime-failure-")), "data");
+  execFileSync("uv", ["run", "cre", "--data-dir", dataDir, "db", "migrate"], { cwd: worktreeRoot });
+  const faux = createFauxModels([]);
+  process.env.PI_MODEL = FAUX_MODEL_REF;
+  const traces: unknown[] = [];
+  const app = await createApp({
+    ctx: context,
+    creDataDir: dataDir,
+    modelsOverride: faux.models,
+    createSession: async () => { throw new Error("sensitive runtime detail"); },
+    trace: (entry) => { traces.push(entry); },
+  });
+  t.after(() => app.close());
+  const created = app.registry.createSession({ principal: "browser", allowed_access_classes: ["open"], allowed_capability_ids: ["uk.bank-rate-current"], allowed_refresh_profiles: [] });
+  assert.equal("error" in created, false);
+  if ("error" in created) throw new Error("session creation failed");
+
+  await assert.rejects(app.runTurnForSession(created.handle.id, "secret prompt"));
+
+  const failed = app.hub.events(created.handle.id).find((event) => event.type === "turn.failed");
+  assert.deepEqual(failed?.payload, { reason_code: "RUNTIME_UNAVAILABLE" });
+  assert.equal(JSON.stringify(failed).includes("sensitive runtime detail"), false);
+  assert.equal(JSON.stringify(traces).includes("secret prompt"), false);
+  assert.equal(record(traces[0])["reason_code"], "RUNTIME_UNAVAILABLE");
+});
+
 async function setup(name: string, publishedNull: boolean, firstResponseGate?: Promise<void>) {
   const logs: string[] = [];
+  const traces: unknown[] = [];
   // test-only logging for assertion capture
   const originalLog = console.log;
   const originalWarn = console.warn;
@@ -127,12 +162,15 @@ async function setup(name: string, publishedNull: boolean, firstResponseGate?: P
   const script = scriptedTurn(launcher, firstResponseGate);
   const faux = createFauxModels(script);
   process.env.PI_MODEL = FAUX_MODEL_REF;
-  const app = await createApp({ ctx: context, creDataDir: dataDir, assetsDir: fixtureAssets(worktreeRoot), launcher, modelsOverride: faux.models });
+  const app = await createApp({
+    ctx: context, creDataDir: dataDir, assetsDir: fixtureAssets(worktreeRoot), launcher, modelsOverride: faux.models,
+    trace: (entry) => { traces.push(entry); },
+  });
   await new Promise<void>((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   const address = app.server.address();
   assert.ok(address !== null && typeof address !== "string");
   return {
-    app, launcher, faux, logs, origin: `http://127.0.0.1:${address.port}`,
+    app, launcher, faux, logs, traces, origin: `http://127.0.0.1:${address.port}`,
     close: async () => {
       try { await app.close(); }
       finally { console.log = originalLog; console.warn = originalWarn; console.error = originalError; }
@@ -200,7 +238,7 @@ function openSse(origin: string, session: Session, lastEventId: string | null) {
 
 function terminal(events: readonly AgentEventV1[], turnId: string): boolean { return events.some((event) => event.turn_id === turnId && (event.type === "turn.completed" || event.type === "turn.failed")); }
 function artifactFrom(events: readonly AgentEventV1[]): unknown { return record(events.find((event) => event.type === "artifact.final")?.payload)["artifact"]; }
-function assertArtifact(value: unknown, publishedNull: boolean): void { const artifact = record(value); const facts = artifact["facts"]; assert.ok(Array.isArray(facts)); assert.equal(record(facts[0])["numeric_value"], "5.25"); assert.ok(Array.isArray(artifact["sources"])); assert.equal(typeof artifact["lineage"], "object"); assert.equal(artifact["published_at"], publishedNull ? null : "2026-08-01T09:00:00.000000Z"); assert.equal(artifact["publication_date_warning"], publishedNull); assert.equal(record(artifact["datasource_confidence"])["bank-rate"], "high"); assert.equal(record(artifact["fact_confidence"])["bank-rate"], "medium"); assert.equal(record(artifact["inference_confidence"])["outlook"], "low"); if (publishedNull) assert.match(String(artifact["display_text"]), /Publication date unavailable/); }
+function assertArtifact(value: unknown, publishedNull: boolean): void { const artifact = record(value); const facts = artifact["facts"]; assert.ok(Array.isArray(facts)); assert.equal(record(facts[0])["numeric_value"], "5.25"); const sources = artifact["sources"]; assert.ok(Array.isArray(sources)); assert.match(String(record(sources[0])["public_url"]), /^https:\/\//); assert.equal(typeof artifact["lineage"], "object"); assert.equal(artifact["published_at"], publishedNull ? null : "2026-08-01T09:00:00.000000Z"); assert.equal(artifact["publication_date_warning"], publishedNull); assert.equal(record(artifact["datasource_confidence"])["bank-rate"], "high"); assert.equal(record(artifact["fact_confidence"])["bank-rate"], "medium"); assert.equal(record(artifact["inference_confidence"])["outlook"], "low"); if (publishedNull) assert.match(String(artifact["display_text"]), /Publication date unavailable/); }
 function record(value: unknown): Readonly<Record<string, unknown>> { assert.ok(isRecord(value)); return value; }
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function writeEvidence(name: string, value: unknown): void { mkdirSync(evidenceRoot, { recursive: true }); writeFileSync(join(evidenceRoot, name), `${JSON.stringify(value, null, 2)}\n`); }

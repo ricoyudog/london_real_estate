@@ -17,7 +17,7 @@ export type SessionToolDependencies = {
   readonly launcher: FacadeLauncher;
   readonly finalizeBrief: (draft: unknown, turn: TurnContext) => Promise<unknown>;
   readonly getTurnContext: () => TurnContext | undefined;
-  readonly onResult?: (toolName: string, result: ToolResult, turn: TurnContext) => void;
+  readonly onResult?: (toolName: string, args: unknown, result: ToolResult, turn: TurnContext) => void;
   readonly preToolCall?: (toolName: string, args: unknown, turn: TurnContext) => ToolResult | undefined;
 };
 
@@ -162,7 +162,7 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
           },
           };
           const result = await deps.launcher.invoke(config.name, request);
-          deps.onResult?.(config.name, result, turn);
+          deps.onResult?.(config.name, resolvedArgs, result, turn);
           return toolResult(result, aliases);
       } catch (error) {
         return toolFailure(errorCode(error));
@@ -192,7 +192,7 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
           turn.beforeToolCall("finalize_market_brief", {});
           const result = await deps.finalizeBrief(resolvedArgs, turn);
           const details: ToolResult = { schema_version: "agent_tool_result.v1", request_id: null, status: "ok", data: isRecord(result) ? result : {}, warnings: [], error: null };
-          deps.onResult?.("finalize_market_brief", details, turn);
+          deps.onResult?.("finalize_market_brief", resolvedArgs, details, turn);
           return toolResult(details, aliases);
         } catch (error) {
           if (error instanceof DraftRejected) return finalizeFailure(error);

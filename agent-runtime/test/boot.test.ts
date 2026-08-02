@@ -213,7 +213,7 @@ test("(l) boot registers the fixed GLM model from generic PI environment", async
 
   try {
     // When: production boot creates its own ModelRuntime.
-    await bootRuntime(context, {
+    const booted = await bootRuntime(context, {
       createSession: async (options) => {
         captured = options;
         return { session: { activeToolNames: expectedTools } };
@@ -226,6 +226,7 @@ test("(l) boot registers the fixed GLM model from generic PI environment", async
     assert.ok(selectedModel);
     assert.equal(selectedModel.provider, "glm");
     assert.equal(selectedModel.id, "GLM-5.2");
+    assert.deepEqual(booted.runtimeIdentity, { runtime_engine: "pi-agent-session", model: "glm/GLM-5.2" });
   } finally {
     restoreCapturedEnv(prior);
   }

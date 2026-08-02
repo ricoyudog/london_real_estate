@@ -5,12 +5,12 @@ import process from "node:process";
 import { ApprovalCoordinator, type PendingApproval } from "./approval.ts";
 import { bootRuntime, type BootOptions } from "./boot.ts";
 import { CancelCoordinator } from "./cancel.ts";
-import { DashboardService } from "./dashboard.ts";
+import { DashboardService, type DashboardOverviewV1 } from "./dashboard.ts";
 import { FacadeLauncher } from "./facade-launcher.ts";
 import { finalizeBrief } from "./finalizer.ts";
 import { createServer } from "./http.ts";
 import { RecoveryStore } from "./recovery.ts";
-import type { SessionContext, TurnContext } from "./runtime.ts";
+import type { SessionContext, TurnContext, TurnFailureReason } from "./runtime.ts";
 import type { ToolResult } from "./facade-launcher.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { LifecycleReducer } from "./runtime.ts";
@@ -27,7 +27,20 @@ export interface AppDeps {
   readonly createSession?: BootOptions["createSession"];
   readonly now?: () => number;
   readonly staticAssets?: StaticAssets;
+  readonly deployment?: DashboardOverviewV1["deployment"];
+  readonly trace?: (entry: TurnTraceV1) => void;
 }
+
+export type TurnTraceV1 = {
+  readonly schema_version: "pi_turn_trace.v1";
+  readonly turn_id: string;
+  readonly runtime_engine: "pi-agent-session";
+  readonly model: string;
+  readonly tool_sequence: readonly string[];
+  readonly terminal_state: TurnOutcome["terminal_state"];
+  readonly duration_ms: number;
+  readonly reason_code?: TurnFailureReason;
+};
 
 export type App = {
   readonly server: http.Server;
@@ -46,7 +59,8 @@ export async function createApp(deps: AppDeps): Promise<App> {
   const hub = new SseHub(registry, { recovery, ...(deps.now === undefined ? {} : { now: deps.now }) });
   const cancel = new CancelCoordinator({ registry, hub });
   const launcher = deps.launcher ?? new FacadeLauncher({ creDataDir: deps.creDataDir, ...(deps.assetsDir === undefined ? {} : { assetsDir: deps.assetsDir }) });
-  const dashboard = new DashboardService({ ctx: deps.ctx, launcher });
+  const dashboard = new DashboardService({ ctx: deps.ctx, launcher, ...(deps.deployment === undefined ? {} : { deployment: deps.deployment }) });
+  const trace = deps.trace ?? ((entry: TurnTraceV1) => { console.log(JSON.stringify(entry)); });
   const approval = new ApprovalCoordinator({ registry, launcher, hub, ...(deps.now === undefined ? {} : { now: deps.now }) });
   const started = new Set<string>();
   const bootedSessions = new Set<unknown>();
@@ -56,6 +70,8 @@ export async function createApp(deps: AppDeps): Promise<App> {
   };
 
   const execute = async (sessionId: string, turnId: string, userMessage: string): Promise<TurnOutcome> => {
+    const startedAt = performance.now();
+    let runtimeIdentity = { runtime_engine: "pi-agent-session" as const, model: process.env.PI_MODEL?.trim() || "unavailable" };
     const session = registry.getSession(sessionId);
     if (session === undefined) throw new AppSessionError(sessionId);
     const ctx: SessionContext = { ...deps.ctx, principal: session.principal, capability_scope_id: session.scope_id };
@@ -68,6 +84,7 @@ export async function createApp(deps: AppDeps): Promise<App> {
         ...(deps.modelsOverride === undefined ? {} : { modelsOverride: deps.modelsOverride }),
         ...(deps.createSession === undefined ? {} : { createSession: deps.createSession }),
       });
+      runtimeIdentity = booted.runtimeIdentity;
       bootedSessions.add(booted.session);
       const wrapped = approvalRuntime(booted, sessionId, turnId, approval, deps.now ?? (() => performance.timeOrigin + performance.now()));
       const outcome = await runTurn(wrapped, userMessage, {
@@ -76,7 +93,7 @@ export async function createApp(deps: AppDeps): Promise<App> {
         onTurnCreated: (turn) => {
           cancel.registerActiveTurn(sessionId, turnId, turn);
           approval.prepareContinuation(sessionId, turnId, wrapped, turn);
-          hub.emit(sessionId, turnId, "turn.started", {});
+          hub.emit(sessionId, turnId, "turn.started", runtimeIdentity);
         },
       });
       approval.enqueueContinuation(sessionId, turnId, wrapped, outcome);
@@ -86,10 +103,21 @@ export async function createApp(deps: AppDeps): Promise<App> {
         if (approval.isAwaiting(sessionId) && (event.type === "turn.completed" || event.type === "turn.failed")) continue;
         projectLifecycle(sessionId, turnId, hub, reducer, event, outcome.artifact);
       }
+      trace(turnTrace(turnId, runtimeIdentity, outcome, startedAt));
       return outcome;
     } catch (error) {
-      try { hub.emit(sessionId, turnId, "turn.failed", {}); }
+      const reason_code = "RUNTIME_UNAVAILABLE" as const;
+      try { hub.emit(sessionId, turnId, "turn.failed", { reason_code }); }
       catch (terminalError) { if (!(terminalError instanceof SseProtocolError)) throw terminalError; }
+      trace({
+        schema_version: "pi_turn_trace.v1",
+        turn_id: turnId,
+        ...runtimeIdentity,
+        tool_sequence: hub.events(sessionId).filter((event) => event.turn_id === turnId && event.type === "tool.started").map((event) => String(event.payload["tool"])),
+        terminal_state: "failed",
+        duration_ms: elapsedMilliseconds(startedAt),
+        reason_code,
+      });
       throw error;
     } finally {
       if (!approval.isAwaiting(sessionId)) registry.releaseTurn(sessionId);
@@ -122,13 +150,29 @@ function approvalRuntime(booted: Awaited<ReturnType<typeof bootRuntime>>, sessio
     ...booted,
     setTurnPolicies: (policies) => booted.setTurnPolicies({
       ...(policies.preToolCall === undefined ? {} : { preToolCall: policies.preToolCall }),
-      onResult: (toolName, result, turn) => {
-        policies.onResult?.(toolName, result, turn);
+      onResult: (toolName, args, result, turn) => {
+        policies.onResult?.(toolName, args, result, turn);
         const pending = pendingApproval(toolName, result, turn, sessionId, now());
         if (pending !== undefined) approval.registerRequired(pending);
       },
     }),
   };
+}
+
+function turnTrace(turnId: string, identity: { readonly runtime_engine: "pi-agent-session"; readonly model: string }, outcome: TurnOutcome, startedAt: number): TurnTraceV1 {
+  return {
+    schema_version: "pi_turn_trace.v1",
+    turn_id: turnId,
+    ...identity,
+    tool_sequence: outcome.events.filter((event) => event.type === "tool.started").map((event) => event.tool),
+    terminal_state: outcome.terminal_state,
+    duration_ms: elapsedMilliseconds(startedAt),
+    ...(outcome.reason_code === undefined ? {} : { reason_code: outcome.reason_code }),
+  };
+}
+
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round((performance.now() - startedAt) * 1000) / 1000);
 }
 
 function pendingApproval(toolName: string, result: ToolResult, turn: TurnContext, sessionId: string, issuedAt: number): PendingApproval | undefined {

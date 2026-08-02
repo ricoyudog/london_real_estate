@@ -185,7 +185,7 @@ export class ApprovalCoordinator {
         this.#queue.delete(sessionId);
         if (this.#registry.status(sessionId) !== "active") continue;
         if (continuation.turn.getDeadlineRemainingMs() === 0) {
-          this.#hub?.emit(sessionId, continuation.turnId, "turn.failed", {});
+          this.#hub?.emit(sessionId, continuation.turnId, "turn.failed", { reason_code: "RUNTIME_UNAVAILABLE" });
           this.#registry.releaseTurn(sessionId);
           continue;
         }
@@ -204,7 +204,7 @@ export class ApprovalCoordinator {
             if (this.#hub !== undefined) projectLifecycle(sessionId, continuation.turnId, this.#hub, reducer, event, resumed.artifact);
           }
         } catch {
-          this.#hub?.emit(sessionId, continuation.turnId, "turn.failed", {});
+          this.#hub?.emit(sessionId, continuation.turnId, "turn.failed", { reason_code: "RUNTIME_UNAVAILABLE" });
         } finally {
           continuation.booted.setTurnContext?.(undefined);
         }

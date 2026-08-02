@@ -166,6 +166,7 @@ test("(i) dashboard overview is bearer-scoped and projects only trusted server d
   let observedScope: string | undefined;
   const overview = {
     schema_version: "dashboard_overview.v1" as const,
+    deployment: { mode: "production" as const, fixture_label: null },
     bank_rate: {
       status: "available" as const, value: "5.25", unit: "percent", definition: "Official Bank Rate", as_of: "2026-08-02T00:00:00Z",
       source_date: "2026-08-01", period_label: "1 Aug 2026", freshness: { retrieval: "fresh", observation: "fresh", degraded: false },
