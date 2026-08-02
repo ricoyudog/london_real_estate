@@ -15,6 +15,7 @@ node_modules/
 # Tooling state
 .codegraph
 .omo/
+.evidence/
 .worktrees/
 
 # Local configuration and secrets
