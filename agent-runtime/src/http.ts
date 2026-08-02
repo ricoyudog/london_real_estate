@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import * as http from "node:http";
 
+import type { CancelCoordinator } from "./cancel.ts";
 import type { RecoveryStore } from "./recovery.ts";
 import type { SseHub } from "./sse.ts";
 import { SessionRegistry } from "./sessions.ts";
@@ -18,9 +19,11 @@ const ROUTES = [
   { method: "DELETE", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}$`) },
 ] as const;
 
-export function createServer(registry: SessionRegistry, options: { readonly sse?: SseHub; readonly recovery?: RecoveryStore } = {}): http.Server {
-  const turns = new Map<string, "unknown" | "terminal">();
-  return http.createServer((req, res) => handleRequest(registry, turns, options.sse, options.recovery, req, res));
+type ServerOptions = { readonly sse?: SseHub; readonly recovery?: RecoveryStore; readonly cancel?: CancelCoordinator };
+
+export function createServer(registry: SessionRegistry, options?: ServerOptions): http.Server {
+  const legacyTurns = options === undefined ? new Map<string, "unknown" | "terminal">() : undefined;
+  return http.createServer((req, res) => handleRequest(registry, legacyTurns, options?.sse, options?.recovery, options?.cancel, req, res));
 }
 
 export function parseSessionId(req: http.IncomingMessage): string | null {
@@ -30,7 +33,7 @@ export function parseSessionId(req: http.IncomingMessage): string | null {
   return decodeURIComponent(matched[1]);
 }
 
-function handleRequest(registry: SessionRegistry, turns: Map<string, "unknown" | "terminal">, sse: SseHub | undefined, recovery: RecoveryStore | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
+function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, sse: SseHub | undefined, recovery: RecoveryStore | undefined, cancel: CancelCoordinator | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const route = ROUTES.find((candidate) => candidate.pattern.test(path));
   if (route === undefined) return respond(res, 404);
@@ -43,8 +46,8 @@ function handleRequest(registry: SessionRegistry, turns: Map<string, "unknown" |
   const auth = authenticate(registry, sessionId, req, res);
   if (!auth) return;
 
-  if (route.pattern.source === ROUTES[1].pattern.source) return createTurn(registry, turns, sessionId, res);
-  if (route.pattern.source === ROUTES[2].pattern.source) return cancelTurn(turns, sessionId, decodeSegment(path, 5), res);
+  if (route.pattern.source === ROUTES[1].pattern.source) return createTurn(registry, legacyTurns, sessionId, res);
+  if (route.pattern.source === ROUTES[2].pattern.source) return cancelTurn(cancel, legacyTurns, sessionId, decodeSegment(path, 5), res);
   if (route.pattern.source === ROUTES[3].pattern.source) return getTurn(recovery, sessionId, decodeSegment(path, 5), res);
   if (route.pattern.source === ROUTES[4].pattern.source) {
     if (sse === undefined) return respond(res, 200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
@@ -84,7 +87,7 @@ function authenticate(registry: SessionRegistry, sessionId: string, req: http.In
   return true;
 }
 
-function createTurn(registry: SessionRegistry, turns: Map<string, "unknown" | "terminal">, sessionId: string, res: http.ServerResponse): void {
+function createTurn(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, sessionId: string, res: http.ServerResponse): void {
   const reserved = registry.reserveTurn(sessionId);
   if (!reserved.ok) {
     if (reserved.reason === "NO_ACTIVE_TURN") return respondJson(res, 409, { error: "active_turn" });
@@ -92,7 +95,7 @@ function createTurn(registry: SessionRegistry, turns: Map<string, "unknown" | "t
     return respond(res, registry.isPreRestartId(sessionId) ? 410 : 404);
   }
   const turnId = randomBytes(16).toString("base64url");
-  turns.set(turnKey(sessionId, turnId), "unknown");
+  legacyTurns?.set(turnKey(sessionId, turnId), "unknown");
   respondJson(res, 202, { turn_id: turnId });
 }
 
@@ -106,13 +109,28 @@ function getTurn(recovery: RecoveryStore | undefined, sessionId: string, turnId:
     : { turn_id: turn.turn_id, state: turn.state, events: turn.events, artifact: turn.artifact });
 }
 
-function cancelTurn(turns: Map<string, "unknown" | "terminal">, sessionId: string, turnId: string, res: http.ServerResponse): void {
+function cancelTurn(cancel: CancelCoordinator | undefined, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, sessionId: string, turnId: string, res: http.ServerResponse): void {
+  if (cancel === undefined) return cancelLegacyTurn(legacyTurns, sessionId, turnId, res);
+  const result = cancel.cancel(sessionId, turnId);
+  if (result.ok) return respondJson(res, 202, { turn_id: turnId, state: "cancelled" });
+  switch (result.reason) {
+    case "UNKNOWN_TURN":
+      return respond(res, 404);
+    case "NOT_ACTIVE":
+      return respondJson(res, 409, { error: "already_terminal" });
+    case "SESSION_GONE":
+      return respond(res, 410);
+  }
+}
+
+function cancelLegacyTurn(turns: Map<string, "unknown" | "terminal"> | undefined, sessionId: string, turnId: string, res: http.ServerResponse): void {
+  if (turns === undefined) return respond(res, 501);
   const key = turnKey(sessionId, turnId);
   const state = turns.get(key);
   if (state === undefined) return respond(res, 404);
   if (state === "terminal") return respondJson(res, 409, { error: "already_terminal" });
   turns.set(key, "terminal");
-  respond(res, 202);
+  return respond(res, 202);
 }
 
 function turnKey(sessionId: string, turnId: string): string {
