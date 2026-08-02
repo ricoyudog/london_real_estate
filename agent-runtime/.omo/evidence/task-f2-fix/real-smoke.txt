@@ -1,0 +1,6 @@
+Command: RUN_REAL_MODEL_SMOKE=1 SUB2API_API_KEY=<redacted> node --experimental-strip-types --test test/real-model-e2e.test.ts
+Outcome: RED (honest failure)
+Terminal state: failed
+Tool sequence: describe_market_data, query_market_data, get_citation_metadata
+Missing required action: finalize_market_brief
+The strict assertion rejected the failed host turn. No host guard was weakened and no key was persisted.

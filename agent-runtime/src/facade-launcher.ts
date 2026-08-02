@@ -40,6 +40,7 @@ type LauncherOptions = {
   readonly instanceId?: string;
   readonly binaryPath?: string;
   readonly assetsDir?: string;
+  readonly kill?: typeof process.kill;
 };
 type InvokeOptions = {
   readonly timeoutSeconds?: number;
@@ -77,6 +78,7 @@ export class FacadeLauncher {
   readonly #validateRequest: ValidateFunction;
   readonly #validateResult: ValidateFunction;
   readonly #contracts: ReadonlyMap<string, CompiledContract>;
+  readonly #kill: typeof process.kill;
   lastStderr = "";
 
   constructor(options: LauncherOptions) {
@@ -91,6 +93,7 @@ export class FacadeLauncher {
       CRE_ENVIRONMENT: "development",
       CRE_INSTANCE_ID: options.instanceId ?? "pi-agent-runtime-phase-2",
     };
+    this.#kill = options.kill ?? process.kill;
 
     const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
     ajv.removeSchema("https://json-schema.org/draft/2020-12/schema");
@@ -166,10 +169,11 @@ export class FacadeLauncher {
     let stdoutBytes = 0;
     let stderrBytes = 0;
     let boundaryError: ProtocolBoundaryError | undefined;
+    let cleanupError: unknown;
     let cleanup: Promise<void> | undefined;
     const stop = (error: ProtocolBoundaryError) => {
       boundaryError ??= error;
-      cleanup ??= terminateGroup(child);
+      cleanup ??= terminateGroup(child, this.#kill).catch((failure) => { cleanupError = failure; });
     };
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBytes += chunk.byteLength;
@@ -193,9 +197,10 @@ export class FacadeLauncher {
     });
     clearTimeout(timeout);
     cancelEvent?.removeEventListener("abort", cancel);
-    cleanup ??= terminateGroup(child);
+    cleanup ??= terminateGroup(child, this.#kill).catch((failure) => { cleanupError = failure; });
     await cleanup;
     if (boundaryError !== undefined) throw boundaryError;
+    if (cleanupError !== undefined) throw cleanupError;
     if (exitCode === null) throw new ProtocolBoundaryError("PROTOCOL_ERROR");
     return {
       exitCode,
@@ -242,19 +247,19 @@ function compileContracts(ajv: Ajv2020, catalog: unknown): ReadonlyMap<string, C
   return contracts;
 }
 
-async function terminateGroup(child: ChildProcess): Promise<void> {
+async function terminateGroup(child: ChildProcess, kill: typeof process.kill): Promise<void> {
   const pid = child.pid;
   if (pid === undefined) return;
-  try { process.kill(-pid, "SIGTERM"); } catch (error) { if (!isMissingProcess(error)) throw error; return; }
+  try { kill(-pid, "SIGTERM"); } catch (error) { if (!isMissingProcess(error)) throw error; return; }
   const deadline = performance.now() + 1_000;
   while (performance.now() < deadline) {
-    try { process.kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
+    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
   }
-  try { process.kill(-pid, "SIGKILL"); } catch (error) { if (!isMissingProcess(error)) throw error; }
+  try { kill(-pid, "SIGKILL"); } catch (error) { if (!isMissingProcess(error)) throw error; }
   const killDeadline = performance.now() + 1_000;
   while (performance.now() < killDeadline) {
-    try { process.kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
+    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
   }
 }
@@ -303,4 +308,4 @@ function failure(requestId: string | null, code: string): ToolResult {
   const selected = details[code] ?? ["The tool protocol was violated.", false];
   return { schema_version: "agent_tool_result.v1", request_id: requestId, status: "error", data: null, warnings: [], error: { code, message: selected[0], retryable: selected[1] } };
 }
-function isMissingProcess(error: unknown): boolean { return error instanceof Error && "code" in error && (error.code === "ESRCH" || error.code === "EPERM"); }
+function isMissingProcess(error: unknown): boolean { return error instanceof Error && "code" in error && error.code === "ESRCH"; }

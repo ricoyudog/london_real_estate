@@ -7,7 +7,7 @@ import { modelVisibleBytes } from "./tools.ts";
 export type RunOptions = { readonly now?: () => number; readonly onTurnCreated?: (turn: TurnContext) => void; readonly populateLedger?: boolean };
 export type TurnOutcome = {
   readonly turn: TurnContext;
-  readonly terminal_state: "completed" | "cancelled" | "failed";
+  readonly terminal_state: "awaiting_approval" | "completed" | "cancelled" | "failed";
   readonly artifact?: unknown;
   readonly events: readonly AgentEvent[];
   readonly clarification_requested?: boolean;
@@ -27,6 +27,7 @@ type RunnerState = {
   readonly pollNotBefore: Map<string, number>;
   readonly pollIntervals: Map<string, number>;
   readonly populateLedger: boolean;
+  awaitingApproval: boolean;
   requeryRequired: boolean;
   artifact: unknown;
 };
@@ -53,15 +54,16 @@ export async function runTurn(booted: BootedRuntime, userMessage: string, option
   return outcome;
 }
 
-export async function resumeTurn(booted: BootedRuntime, outcome: TurnOutcome): Promise<TurnOutcome> {
+export async function resumeTurn(booted: BootedRuntime, outcome: TurnOutcome, continueSession?: () => Promise<void>): Promise<TurnOutcome> {
   if (!outcome.turn.isActive()) throw new TypeError("cannot resume an inactive turn");
   const state = states.get(outcome.turn);
   if (state === undefined) throw new TypeError("turn has no runner state");
   if (state.reducer.state() !== "running") return outcome;
-  return execute(booted, outcome.turn, "", state, false);
+  state.awaitingApproval = false;
+  return execute(booted, outcome.turn, "", state, false, continueSession);
 }
 
-async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: string, state: RunnerState, fresh: boolean): Promise<TurnOutcome> {
+async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: string, state: RunnerState, fresh: boolean, continueSession?: () => Promise<void>): Promise<TurnOutcome> {
   if (fresh) state.reducer.transition({ type: "turn.started" });
   booted.setTurnPolicies({
     preToolCall: (toolName, args, active) => beforeTool(state, toolName, args, active),
@@ -91,7 +93,8 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
   });
   try {
     if (turn.isCancelled()) await session.abort?.();
-    else await session.prompt(userMessage);
+    else if (continueSession === undefined) await session.prompt(userMessage);
+    else await continueSession();
   } finally {
     if (typeof unsubscribe === "function") unsubscribe();
   }
@@ -99,6 +102,7 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     state.reducer.transition({ type: "turn.completed", terminal_state: "cancelled" });
     return outcome(state, turn, "cancelled");
   }
+  if (state.awaitingApproval) return outcome(state, turn, "awaiting_approval");
   if (rejectText || state.buffer.guardRejected) {
     state.reducer.transition({ type: "turn.failed" });
     return outcome(state, turn, "failed");
@@ -111,7 +115,7 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
 }
 
 function newState(now: () => number, populateLedger: boolean): RunnerState {
-  return { reducer: new LifecycleReducer(), buffer: new ModelTextBuffer(), now, pollNotBefore: new Map(), pollIntervals: new Map(), populateLedger, requeryRequired: false, artifact: undefined };
+  return { reducer: new LifecycleReducer(), buffer: new ModelTextBuffer(), now, pollNotBefore: new Map(), pollIntervals: new Map(), populateLedger, awaitingApproval: false, requeryRequired: false, artifact: undefined };
 }
 
 function beforeTool(state: RunnerState, toolName: string, args: unknown, _turn: TurnContext): ToolResult | undefined {
@@ -132,6 +136,7 @@ function afterTool(state: RunnerState, toolName: string, result: ToolResult, tur
   const items = toolName === "get_citation_metadata" ? stringArray(data?.["citation_refs"]).length : records.length;
   turn.chargeAccumulators({ items, records: records.length, citations, modelToolBytes: modelVisibleBytes(result) });
   if (toolName === "request_data_refresh" && data !== null) {
+    state.awaitingApproval = data["disposition"] === "approval_required";
     const jobRef = data?.["job_ref"];
     const seconds = data?.["poll_after_seconds"];
     if (typeof jobRef === "string" && typeof seconds === "number" && seconds > 0) {
@@ -147,39 +152,39 @@ function afterTool(state: RunnerState, toolName: string, result: ToolResult, tur
 
 function addQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown>>, records: readonly Readonly<Record<string, unknown>>[]): void {
   const anchor = data["anchor_as_of"];
-  const first = records[0];
-  if (typeof anchor !== "string" || first === undefined) return;
-  const observationIds = records.map((record) => record["observation_id"]).filter((value): value is string => typeof value === "string");
-  const citationRefs = records.flatMap((record) => stringArray(record["citation_refs"]));
-  const numeric = isRecord(first["numeric"])
-    ? { ...first["numeric"], period_label: first["numeric"]["period_label"] ?? first["numeric"]["source_date"] }
-    : undefined;
-  turn.addLedgerEntry({
-    kind: "query", anchor_as_of: anchor, observation_ids: observationIds, citation_refs: citationRefs,
-    ...(numeric === undefined ? {} : { numeric_projection: numeric }),
-    freshness: { retrieval_freshness: first["retrieval_freshness"], observation_freshness: first["observation_freshness"] },
-  });
+  if (typeof anchor !== "string") return;
+  for (const record of records) {
+    const observationId = record["observation_id"];
+    const numeric = isRecord(record["numeric"])
+      ? { ...record["numeric"], period_label: record["numeric"]["period_label"] ?? record["numeric"]["source_date"] }
+      : undefined;
+    turn.addLedgerEntry({
+      kind: "query", anchor_as_of: anchor,
+      observation_ids: typeof observationId === "string" ? [observationId] : [],
+      citation_refs: stringArray(record["citation_refs"]),
+      ...(numeric === undefined ? {} : { numeric_projection: numeric }),
+      freshness: { retrieval_freshness: record["retrieval_freshness"], observation_freshness: record["observation_freshness"] },
+    });
+  }
 }
 
 function enrichQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown>>): void {
   const citations = recordArray(data["citations"]);
-  const citation = citations[0];
   const query = [...turn.getLedger()].reverse().find((entry) => entry.kind === "query");
-  if (citation === undefined || query === undefined || !isRecord(query.numeric_projection)) return;
-  Object.assign(query.numeric_projection, {
-    published_at: citation["published_at"] ?? null,
-    datasource_confidence: citation["confidence"],
-    source: citation["publisher"],
-    anchor_as_of: query.anchor_as_of,
-  });
-  const known = new Set(query.citation_refs);
-  const novel = citations.filter((item) => typeof item["citation_ref"] === "string" && !known.has(item["citation_ref"]));
-  if (novel.length === 0) return;
-  turn.addLedgerEntry({
-    kind: "citation", anchor_as_of: query.anchor_as_of,
-    observation_ids: novel.map((item) => item["observation_id"]).filter((value): value is string => typeof value === "string"),
-    citation_refs: novel.map((item) => item["citation_ref"]).filter((value): value is string => typeof value === "string"),
-  });
+  if (query === undefined) return;
+  for (const citation of citations) {
+    const ref = citation["citation_ref"];
+    if (typeof ref !== "string") continue;
+    const observationId = citation["observation_id"];
+    turn.addLedgerEntry({
+      kind: "citation", anchor_as_of: query.anchor_as_of,
+      observation_ids: typeof observationId === "string" ? [observationId] : [], citation_refs: [ref],
+      numeric_projection: {
+        published_at: citation["published_at"] ?? null,
+        datasource_confidence: citation["confidence"], source: citation["publisher"], anchor_as_of: query.anchor_as_of,
+      },
+    });
+  }
 }
 
 function updateRefreshState(state: RunnerState, data: Readonly<Record<string, unknown>> | null): void {

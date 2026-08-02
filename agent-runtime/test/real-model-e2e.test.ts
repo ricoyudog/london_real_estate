@@ -45,15 +45,13 @@ test("real GLM-5.2 runs a terminal turn through the seeded Bank Rate tools", { s
     }
 
     const { outcome, reasoning } = result;
-    assert.ok(outcome.terminal_state === "completed" || outcome.terminal_state === "failed");
     t.diagnostic(`reasoning=${reasoning}`);
     t.diagnostic(`tool_sequence=${JSON.stringify(toolSequence(outcome))}`);
-    if (outcome.terminal_state === "completed") {
-      assertArtifact(outcome.artifact);
-      t.diagnostic(`artifact=${JSON.stringify(outcome.artifact)}`);
-    } else {
-      t.diagnostic(`failure_reason=${JSON.stringify(outcome.events.at(-1))}`);
-    }
+    if (outcome.terminal_state !== "completed") t.diagnostic(`failure_reason=${JSON.stringify(outcome.events.at(-1))}`);
+    assert.equal(outcome.terminal_state, "completed");
+    assertArtifact(outcome.artifact);
+    assertMinimumToolSequence(toolSequence(outcome));
+    t.diagnostic(`artifact=${JSON.stringify(outcome.artifact)}`);
   } finally {
     if (booted !== undefined) await disposeSession(booted.session);
     restoreEnv("PI_MODEL", previousModel);
@@ -79,6 +77,10 @@ async function run(reasoning: boolean): Promise<{ readonly booted: BootedRuntime
     finalizeBrief: async (draft, turn) => finalizeBrief({ schema_version: "market_brief_draft.v1", ...record(draft) }, turn),
   });
   return { booted, outcome: await runTurn(booted, "What is the current Bank of England base rate?", { populateLedger: true }), reasoning };
+}
+
+function assertMinimumToolSequence(sequence: readonly string[]): void {
+  for (const tool of ["query_market_data", "get_citation_metadata", "finalize_market_brief"] as const) assert.ok(sequence.includes(tool), `missing required tool: ${tool}`);
 }
 
 function toolSequence(outcome: TurnOutcome): readonly string[] {

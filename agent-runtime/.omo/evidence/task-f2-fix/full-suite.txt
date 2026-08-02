@@ -1,0 +1,11 @@
+Command: npm test
+Result: 154 tests, 152 passed, 0 failed, 2 skipped (real-model opt-in gates).
+
+Command: node --experimental-strip-types --test test/turn-runner.test.ts test/finalizer.test.ts test/approval.test.ts test/facade-launcher.test.ts
+Result: 64 tests, 64 passed, 0 failed.
+
+Command: node --experimental-strip-types --test test/integration-2b.test.ts
+Result: 3 tests, 3 passed, 0 failed.
+
+Command: node --experimental-strip-types --test test/fixtures/*.test.ts
+Result: 8 tests, 8 passed, 0 failed.

@@ -62,6 +62,9 @@ type NumericProjection = {
   readonly anchor_as_of?: string;
 };
 
+type NumericFields = Pick<NumericProjection, "value" | "unit" | "definition" | "as_of" | "source_date" | "period_label">;
+type CitationMetadata = Pick<NumericProjection, "published_at" | "datasource_confidence" | "source" | "anchor_as_of">;
+
 type CitationResolution = {
   readonly ref: string;
   readonly entry: LedgerEntry;
@@ -185,20 +188,30 @@ export class ModelTextBuffer {
 }
 
 export const hostLedger = (turn: TurnContext): HostLedger => {
-  const citations = new Map<string, CitationResolution>();
+  const numeric = new Map<string, { readonly entry: LedgerEntry; readonly fields: NumericFields }>();
+  const metadata = new Map<string, CitationMetadata>();
   let anchor_as_of: string | null = null;
   for (const entry of turn.getLedger()) {
     if (anchor_as_of === null) anchor_as_of = entry.anchor_as_of;
     if (anchor_as_of !== entry.anchor_as_of) throw new DraftRejected("CROSS_ANCHOR");
     for (const ref of entry.citation_refs) {
-      if (citations.has(ref)) throw new DraftRejected("DUPLICATE_CITATION_REF", ref);
-      const projection = parseProjection(entry.numeric_projection);
-      if (projection === null) continue;
-      if (projection.anchor_as_of !== undefined && projection.anchor_as_of !== entry.anchor_as_of) {
-        throw new DraftRejected("CROSS_ANCHOR", ref);
+      const numericFields = parseNumericFields(entry.numeric_projection);
+      const citationMetadata = parseCitationMetadata(entry.numeric_projection);
+      if (numericFields !== null) {
+        if (numeric.has(ref)) throw new DraftRejected("DUPLICATE_CITATION_REF", ref);
+        numeric.set(ref, { entry, fields: numericFields });
       }
-      citations.set(ref, { ref, entry, projection });
+      if (citationMetadata !== null) {
+        if (metadata.has(ref)) throw new DraftRejected("DUPLICATE_CITATION_REF", ref);
+        if (citationMetadata.anchor_as_of !== undefined && citationMetadata.anchor_as_of !== entry.anchor_as_of) throw new DraftRejected("CROSS_ANCHOR", ref);
+        metadata.set(ref, citationMetadata);
+      }
     }
+  }
+  const citations = new Map<string, CitationResolution>();
+  for (const [ref, resolution] of numeric) {
+    const citationMetadata = metadata.get(ref);
+    if (citationMetadata !== undefined) citations.set(ref, { ref, entry: resolution.entry, projection: { ...resolution.fields, ...citationMetadata } });
   }
   return { anchor_as_of, citations };
 };
@@ -351,7 +364,7 @@ const guardModelText = (draft: MarketBriefDraftV1): void => {
   }
 };
 
-const parseProjection = (input: unknown): NumericProjection | null => {
+const parseNumericFields = (input: unknown): NumericFields | null => {
   if (!isRecord(input)) return null;
   const value = input.value;
   const unit = input.unit;
@@ -359,26 +372,20 @@ const parseProjection = (input: unknown): NumericProjection | null => {
   const asOf = input.as_of;
   const sourceDate = input.source_date;
   const periodLabel = input.period_label;
+  if (typeof value !== "string" || typeof unit !== "string" || typeof definition !== "string" || typeof asOf !== "string" || typeof sourceDate !== "string" || typeof periodLabel !== "string") return null;
+  return { value, unit, definition, as_of: asOf, source_date: sourceDate, period_label: periodLabel };
+};
+
+const parseCitationMetadata = (input: unknown): CitationMetadata | null => {
+  if (!isRecord(input)) return null;
   const publishedAt = input.published_at;
   const confidence = input.datasource_confidence;
   const source = input.source;
   const anchorAsOf = input.anchor_as_of;
-  if (typeof value !== "string" || typeof unit !== "string" || typeof definition !== "string" || typeof asOf !== "string" || typeof sourceDate !== "string" || typeof periodLabel !== "string" || typeof source !== "string") return null;
   if (publishedAt !== null && typeof publishedAt !== "string") return null;
-  if (!isMember(confidence, confidences)) return null;
+  if (!isMember(confidence, confidences) || typeof source !== "string") return null;
   if (anchorAsOf !== undefined && typeof anchorAsOf !== "string") return null;
-  return {
-    value,
-    unit,
-    definition,
-    as_of: asOf,
-    source_date: sourceDate,
-    period_label: periodLabel,
-    published_at: publishedAt,
-    datasource_confidence: confidence,
-    source,
-    ...(anchorAsOf === undefined ? {} : { anchor_as_of: anchorAsOf }),
-  };
+  return { published_at: publishedAt, datasource_confidence: confidence, source, ...(anchorAsOf === undefined ? {} : { anchor_as_of: anchorAsOf }) };
 };
 
 const requireRecord = (input: unknown): UnknownRecord => {

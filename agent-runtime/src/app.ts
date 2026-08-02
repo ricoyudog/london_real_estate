@@ -71,10 +71,11 @@ export async function createApp(deps: AppDeps): Promise<App> {
         ...(deps.now === undefined ? {} : { now: deps.now }),
         onTurnCreated: (turn) => {
           cancel.registerActiveTurn(sessionId, turnId, turn);
-          approval.enqueueContinuation(sessionId, turnId, wrapped, { turn });
+          approval.prepareContinuation(sessionId, turnId, wrapped, turn);
           hub.emit(sessionId, turnId, "turn.started", {});
         },
       });
+      approval.enqueueContinuation(sessionId, turnId, wrapped, outcome);
       const reducer = new LifecycleReducer();
       for (const event of outcome.events.slice(1)) {
         if (outcome.terminal_state === "cancelled" && event.type === "turn.completed") continue;

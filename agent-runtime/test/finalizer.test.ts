@@ -83,6 +83,39 @@ test("finalizeBrief hydrates a valid draft exclusively from the ledger", () => {
   assert.match(brief.display_text, /publication date/i);
 });
 
+test("finalizeBrief keeps numeric and qualitative citations on their own record lineage", () => {
+  // Given: two query records with distinct values and per-citation metadata
+  const turn = new TurnContext(session, defaultTurnLimits);
+  for (const [observation, citation, value] of [["observation-a", "citation-a", "5.25"], ["observation-b", "citation-b", "6.50"]] as const) {
+    turn.addLedgerEntry({
+      kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", observation_ids: [observation], citation_refs: [citation],
+      numeric_projection: { value, unit: "percent", definition: `Bank Rate ${value}`, as_of: "2026-08-01", source_date: "2026-08-01", period_label: value },
+    });
+    turn.addLedgerEntry({
+      kind: "citation", anchor_as_of: "2026-08-02T00:00:00Z", observation_ids: [observation], citation_refs: [citation],
+      numeric_projection: { published_at: `${value}Z`, datasource_confidence: value === "6.50" ? "medium" : "high", source: `Publisher ${value}` },
+    });
+  }
+  const draft: MarketBriefDraftV1 = {
+    schema_version: "market_brief_draft.v1", title: "Lineage", status: "complete",
+    facts: [
+      { claim_id: "numeric-b", kind: "numeric", confidence: "high", numeric_citation_ref: "citation-b" },
+      { claim_id: "qualitative", kind: "qualitative", confidence: "medium", text: "Sources differ.", supporting_citation_refs: ["citation-a", "citation-b"] },
+    ],
+    inferences: [], limitations: [],
+  };
+
+  // When: the host hydrates the draft
+  const brief = finalizeBrief(draft, turn);
+
+  // Then: record B keeps its own numeric value and both refs remain distinct
+  assert.equal(brief.facts[0]?.numeric_value, "6.50");
+  assert.equal(brief.facts[0]?.numeric_definition, "Bank Rate 6.50");
+  assert.deepEqual(brief.lineage["numeric-b"]?.observation_ids, ["observation-b"]);
+  assert.deepEqual(brief.lineage["qualitative"]?.citation_refs, ["citation-a", "citation-b"]);
+  assert.deepEqual(brief.sources.map((source) => source.source), ["Publisher 6.50", "Publisher 5.25"]);
+});
+
 test("finalizeBrief rejects numeric model values", () => {
   // Given: a numeric fact with a prohibited value field
   const draft = { ...validDraft(), facts: [{ ...validDraft().facts[0], value: "5.25" }] };

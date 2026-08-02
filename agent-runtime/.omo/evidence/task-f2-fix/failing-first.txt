@@ -1,0 +1,10 @@
+F2-1 RED: `finalizeBrief keeps numeric and qualitative citations on their own record lineage`
+Expected failure observed before production edits: DraftRejected UNKNOWN_CITATION_REF citation-b.
+
+F2-2 RED: `(a) approve while streaming queues one follow-up on the same logical turn`
+Expected failure observed before production edits: artifact.final was absent (false !== true).
+
+F2-4 RED: `n: EPERM during process-group cleanup becomes a typed protocol failure`
+Expected failure observed before production edits: invoke returned status `ok` instead of `error`.
+
+All three focused tests passed after their fixes.

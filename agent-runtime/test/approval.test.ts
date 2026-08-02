@@ -32,11 +32,14 @@ test("(a) approve while streaming queues one follow-up on the same logical turn"
   assert.deepEqual(result, { ok: true, outcome: "approved" });
   assert.deepEqual(fixture.messages, [{ customType: "approval-continuation", options: { deliverAs: "followUp" } }]);
   assert.deepEqual(fixture.identity(), identity);
+  assert.equal(fixture.resumedTurn, fixture.turn);
   assert.equal(fixture.hub.events(fixture.sessionId).filter((event) => event.type === "turn.started").length, 1);
   assert.equal(fixture.hub.events(fixture.sessionId).filter(terminal).length, 1);
+  assert.equal(fixture.hub.events(fixture.sessionId).some((event) => event.type === "artifact.final"), true);
+  assert.equal(fixture.hub.events(fixture.sessionId).find((event) => event.type === "artifact.final")?.payload["artifact"], fixture.artifact);
 });
 
-test("(b) approve while idle triggers one custom continuation on the same logical turn", async () => {
+test("(b) approve while idle triggers one continuation on the same logical turn", async () => {
   const fixture = setup(false);
   const identity = fixture.identity();
 
@@ -46,7 +49,7 @@ test("(b) approve while idle triggers one custom continuation on the same logica
   assert.deepEqual(fixture.identity(), identity);
 });
 
-test("(c) streaming-to-idle boundary selects exactly one dispatcher path", async () => {
+test("(c) streaming-to-idle boundary selects exactly one continuation path", async () => {
   const gate = deferred();
   const fixture = setup(true, gate.promise);
   const decision = fixture.coordinator.decide(fixture.sessionId, fixture.approval.approval_id, "approve", context.principal, context.capability_scope_id);
@@ -207,7 +210,10 @@ test("composed app registers approval_required and rejects a second user prompt"
       request_profile: "onspd-postcode", bounded_scope: { postcode: "SW1A 1AA" }, intent: "resolve postcode",
     }), { stopReason: "toolUse" }),
     fauxAssistantMessage(fauxText("Awaiting approval.")),
-    fauxAssistantMessage(fauxText("Approval received.")),
+    fauxAssistantMessage(fauxToolCall("finalize_market_brief", {
+      title: "Postcode coverage", status: "unavailable", facts: [], inferences: [], limitations: ["No canonical postcode facts returned."],
+    }), { stopReason: "toolUse" }),
+    fauxAssistantMessage(fauxText("Brief ready.")),
   ]);
   process.env.PI_MODEL = FAUX_MODEL_REF;
   const app = await createApp({ ctx: context, creDataDir: dataDir, assetsDir: fixtureAssets(worktreeRoot), launcher, modelsOverride: faux.models });
@@ -232,6 +238,7 @@ test("composed app registers approval_required and rejects a second user prompt"
   assert.equal(conflict.status, 409);
   assert.equal(approvalResponse.status, 200);
   assert.deepEqual(await approvalResponse.json(), { outcome: "approved" });
+  await waitFor(() => app.hub.events(sessionId).some(terminal), () => JSON.stringify(app.hub.events(sessionId)));
   assert.deepEqual(launcher.calls, ["request_data_refresh", "approve_refresh"]);
   assert.equal(app.hub.events(sessionId).filter((event) => event.type === "turn.started").length, 1);
   assert.equal(app.hub.events(sessionId).filter(terminal).length, 1);
@@ -258,14 +265,26 @@ function setup(streaming: boolean, launchGate?: Promise<void>, override: Partial
     fingerprint: refresh.fingerprint, policy_version: "test-online-v1", issued_at_ms: clock.now,
     expires_at_ms: 1_000, decision: null, ...override,
   };
-  const coordinator = new ApprovalCoordinator({ registry, launcher, hub, now: () => clock.now });
-  coordinator.enqueueContinuation(created.handle.id, "turn-ons", { session, ctx: context }, { turn });
+  const artifact = { schema_version: "market_brief.v1", title: "Resumed brief" };
+  let resumedTurn: TurnContext | undefined;
+  const coordinator = new ApprovalCoordinator({
+    registry, launcher, hub, now: () => clock.now,
+    resume: async (_booted, outcome, continueSession) => {
+      await continueSession?.();
+      resumedTurn = outcome.turn;
+      return { turn: outcome.turn, terminal_state: "completed", artifact, events: [...outcome.events, { type: "tool.started", tool: "finalize_market_brief" }, { type: "tool.completed", tool: "finalize_market_brief", ok: true }, { type: "artifact.final" }, { type: "turn.completed", terminal_state: "completed" }] };
+    },
+  });
+  let active: TurnContext | undefined;
+  const booted = { session, ctx: context, setTurnContext: (next: TurnContext | undefined) => { active = next; } };
+  coordinator.enqueueContinuation(created.handle.id, "turn-ons", booted, { turn, terminal_state: "awaiting_approval", events: [{ type: "turn.started" }] });
   hub.emit(created.handle.id, "turn-ons", "turn.started", {});
   if (register) assert.deepEqual(coordinator.registerRequired(approval), { ok: true });
   const ledger = turn.getLedger();
   return {
-    registry, coordinator, hub, launcher, session, turn, approval, clock, bearer: created.bearer,
+    registry, coordinator, hub, launcher, session, turn, approval, clock, bearer: created.bearer, artifact,
     sessionId: created.handle.id, messages: session.messages,
+    get resumedTurn() { return resumedTurn; },
     identity: () => ({ turn, scope: turn.session.capability_scope_id, ledger, deadline: turn.deadline, refreshIds: turn.refreshIds }),
   };
 }
@@ -313,4 +332,4 @@ function terminal(event: { readonly type: string }): boolean { return event.type
 function deferred() { let resolve = (): void => undefined; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; }
 function requestId(value: unknown): string | null { return isRecord(value) && typeof value["request_id"] === "string" ? value["request_id"] : null; }
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value); }
-async function waitFor(predicate: () => boolean): Promise<void> { const deadline = performance.now() + 5_000; while (!predicate()) { if (performance.now() >= deadline) throw new Error("condition deadline exceeded"); await new Promise<void>((resolve) => setImmediate(resolve)); } }
+async function waitFor(predicate: () => boolean, detail: () => string = () => ""): Promise<void> { const deadline = performance.now() + 5_000; while (!predicate()) { if (performance.now() >= deadline) throw new Error(`condition deadline exceeded: ${detail()}`); await new Promise<void>((resolve) => setImmediate(resolve)); } }

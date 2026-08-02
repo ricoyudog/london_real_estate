@@ -4,7 +4,9 @@ import type { FacadeLauncher, ToolResult } from "./facade-launcher.ts";
 import type { SessionContext, TurnContext } from "./runtime.ts";
 import type { SessionRegistry } from "./sessions.ts";
 import type { SseHub } from "./sse.ts";
-import type { TurnOutcome } from "./turn-runner.ts";
+import { LifecycleReducer } from "./runtime.ts";
+import { projectLifecycle } from "./sse.ts";
+import { resumeTurn, type TurnOutcome } from "./turn-runner.ts";
 
 const TEST_POLICY_VERSION = "test-online-v1";
 
@@ -35,10 +37,13 @@ type Continuation = {
   readonly booted: {
     readonly session: unknown;
     readonly ctx: SessionContext;
-    readonly setTurnContext?: (turn: TurnContext | undefined) => void;
+    readonly setTurnContext: (turn: TurnContext | undefined) => void;
   };
-  readonly outcome: Pick<TurnOutcome, "turn">;
+  readonly turn: TurnContext;
+  readonly outcome: Promise<TurnOutcome>;
+  readonly resolveOutcome: (outcome: TurnOutcome) => void;
 };
+type ResumeContinuation = (booted: Continuation["booted"], outcome: TurnOutcome, continueSession?: () => Promise<void>) => Promise<TurnOutcome>;
 
 type DecisionFailure =
   | "UNKNOWN"
@@ -61,6 +66,7 @@ export class ApprovalCoordinator {
   readonly #hub: SseHub | undefined;
   readonly #now: () => number;
   readonly #policyVersion: string;
+  readonly #resume: ResumeContinuation;
   readonly #pending = new Map<string, PendingApproval>();
   readonly #continuations = new Map<string, Continuation>();
   readonly #queue = new Map<string, Continuation>();
@@ -73,12 +79,14 @@ export class ApprovalCoordinator {
     readonly hub?: SseHub;
     readonly now?: () => number;
     readonly policyVersion?: string;
+    readonly resume?: ResumeContinuation;
   }) {
     this.#registry = deps.registry;
     this.#launcher = deps.launcher;
     this.#hub = deps.hub;
     this.#now = deps.now ?? (() => performance.timeOrigin + performance.now());
     this.#policyVersion = deps.policyVersion ?? TEST_POLICY_VERSION;
+    this.#resume = deps.resume ?? ((booted, outcome, continueSession) => resumeTurn(booted as Parameters<typeof resumeTurn>[0], outcome, continueSession));
   }
 
   registerRequired(approval: PendingApproval): { readonly ok: true } | { readonly ok: false; readonly reason: "ALREADY_EXISTS" | "POLICY_VERSION_MISMATCH" } {
@@ -91,8 +99,17 @@ export class ApprovalCoordinator {
     return { ok: true };
   }
 
-  enqueueContinuation(sessionId: string, turnId: string, booted: Continuation["booted"], outcome: Continuation["outcome"]): void {
-    this.#continuations.set(sessionId, { turnId, booted, outcome });
+  enqueueContinuation(sessionId: string, turnId: string, booted: Continuation["booted"], outcome: TurnOutcome): void {
+    const existing = this.#continuations.get(sessionId);
+    if (existing !== undefined && existing.turn === outcome.turn) {
+      existing.resolveOutcome(outcome);
+      return;
+    }
+    this.#continuations.set(sessionId, readyContinuation(turnId, booted, outcome.turn, outcome));
+  }
+
+  prepareContinuation(sessionId: string, turnId: string, booted: Continuation["booted"], turn: TurnContext): void {
+    this.#continuations.set(sessionId, readyContinuation(turnId, booted, turn));
   }
 
   isAwaiting(sessionId: string): boolean {
@@ -117,7 +134,7 @@ export class ApprovalCoordinator {
     if (approval.principal !== principal) return { ok: false, reason: "PRINCIPAL_MISMATCH" };
     if (approval.policy_version !== this.#policyVersion || approval.policy_version !== TEST_POLICY_VERSION) return { ok: false, reason: "POLICY_VERSION_MISMATCH" };
     const continuation = this.#continuations.get(sessionId);
-    if (continuation !== undefined && !refreshMatches(continuation.outcome.turn, approval)) return { ok: false, reason: "FINGERPRINT_MISMATCH" };
+    if (continuation !== undefined && !refreshMatches(continuation.turn, approval)) return { ok: false, reason: "FINGERPRINT_MISMATCH" };
     if (approval.decision !== null) {
       if (approval.decision !== decision) return { ok: false, reason: "REPLAY_OPPOSITE" };
       return { ok: true, outcome: decision === "approve" ? "approved" : "denied", replay: "same" };
@@ -165,19 +182,32 @@ export class ApprovalCoordinator {
         if (entry === undefined) return;
         const [sessionId, continuation] = entry;
         this.#queue.delete(sessionId);
-        if (this.#registry.status(sessionId) !== "active" || continuation.outcome.turn.getDeadlineRemainingMs() === 0) continue;
+        if (this.#registry.status(sessionId) !== "active") continue;
+        if (continuation.turn.getDeadlineRemainingMs() === 0) {
+          this.#hub?.emit(sessionId, continuation.turnId, "turn.failed", {});
+          this.#registry.releaseTurn(sessionId);
+          continue;
+        }
+        const outcome = await continuation.outcome;
         const session = piSession(continuation.booted.session);
         const message = { customType: "approval-continuation", content: "Refresh approved — continue the same turn.", display: "Refresh approved" };
-        const streaming = session.isStreaming;
-        continuation.booted.setTurnContext?.(continuation.outcome.turn);
+        continuation.booted.setTurnContext?.(continuation.turn);
         try {
-          await session.sendCustomMessage(message, streaming ? { deliverAs: "followUp" } : { triggerTurn: true });
-          await session.waitForIdle?.();
+          const previousEventCount = outcome.events.length;
+          const resumed = await this.#resume(continuation.booted, outcome, async () => {
+            await session.sendCustomMessage(message, session.isStreaming ? { deliverAs: "followUp" } : { triggerTurn: true });
+            await session.waitForIdle?.();
+          });
+          const reducer = new LifecycleReducer();
+          for (const event of resumed.events.slice(previousEventCount)) {
+            if (this.#hub !== undefined) projectLifecycle(sessionId, continuation.turnId, this.#hub, reducer, event, resumed.artifact);
+          }
+        } catch {
+          this.#hub?.emit(sessionId, continuation.turnId, "turn.failed", {});
         } finally {
           continuation.booted.setTurnContext?.(undefined);
         }
         if (this.#registry.status(sessionId) === "active") {
-          this.#hub?.emit(sessionId, continuation.turnId, "turn.completed", { terminal_state: "completed" });
           this.#registry.releaseTurn(sessionId);
         }
       }
@@ -202,6 +232,14 @@ export class ApprovalCoordinator {
 
 function refreshMatches(turn: TurnContext, approval: PendingApproval): boolean {
   return [...turn.refreshIds.values()].some((refresh) => refresh.refresh_request_id === approval.refresh_request_id && refresh.fingerprint === approval.fingerprint);
+}
+
+function readyContinuation(turnId: string, booted: Continuation["booted"], turn: TurnContext, ready?: TurnOutcome): Continuation {
+  let resolveOutcome = (_outcome: TurnOutcome): void => undefined;
+  const outcome = ready === undefined
+    ? new Promise<TurnOutcome>((resolve) => { resolveOutcome = resolve; })
+    : Promise.resolve(ready);
+  return { turnId, booted, turn, outcome, resolveOutcome };
 }
 
 function piSession(value: unknown): PiSession {

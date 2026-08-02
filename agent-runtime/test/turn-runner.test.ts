@@ -27,6 +27,33 @@ test("(p) value lookups without a time anchor still clarify", () => { assert.equ
 test("(q) latest value lookups do not clarify", () => { assert.equal(requiresClarification("Show the latest Bank Rate"), false); });
 test("(r) analysis markers do not require a time anchor", () => { assert.equal(requiresClarification("How does inflation influence office demand?"), false); });
 test("(s) natural-language dates do not require clarification", () => { assert.equal(requiresClarification("What was the rate in January 2026?"), false); });
+test("(t) query and citation ledger entries preserve one projection per citation", async () => {
+  const runtime = fake(async (driver) => {
+    await driver.call("query_market_data", {});
+    await driver.call("get_citation_metadata", {});
+  }, [
+    ok({ anchor_as_of: "2026-08-02T00:00:00Z", records: [
+      { observation_id: "observation-a", citation_refs: ["citation-a"], numeric: numeric("5.25") },
+      { observation_id: "observation-b", citation_refs: ["citation-b"], numeric: numeric("6.50") },
+    ] }),
+    ok({ citations: [
+      { observation_id: "observation-a", citation_ref: "citation-a", published_at: null, confidence: "high", publisher: "Publisher A" },
+      { observation_id: "observation-b", citation_ref: "citation-b", published_at: "2026-08-01", confidence: "medium", publisher: "Publisher B" },
+    ] }),
+  ]);
+
+  const outcome = await runTurn(runtime.booted, "latest market data", { now: runtime.now, populateLedger: true });
+
+  const queryEntries = outcome.turn.getLedger().filter((entry) => entry.kind === "query");
+  const citationEntries = outcome.turn.getLedger().filter((entry) => entry.kind === "citation");
+  assert.deepEqual(queryEntries.map((entry) => [entry.observation_ids, entry.citation_refs, projectionField(entry.numeric_projection, "value")]), [
+    [["observation-a"], ["citation-a"], "5.25"],
+    [["observation-b"], ["citation-b"], "6.50"],
+  ]);
+  assert.deepEqual(citationEntries.map((entry) => [entry.citation_refs, projectionField(entry.numeric_projection, "source")]), [
+    [["citation-a"], "Publisher A"], [["citation-b"], "Publisher B"],
+  ]);
+});
 
 type Driver = { readonly call: (toolName: string, args: unknown) => Promise<void> };
 type Policy = { readonly preToolCall?: (toolName: string, args: unknown, turn: TurnContext) => ToolResult | undefined; readonly onResult?: (toolName: string, result: ToolResult, turn: TurnContext) => void };
@@ -42,5 +69,7 @@ async function run(runtime: ReturnType<typeof fake>) { return runTurn(runtime.bo
 function records(count: number): readonly Readonly<Record<string, unknown>>[] { return Array.from({ length: count }, () => ({ citation_refs: ["ref"] })); }
 function ok(data: Readonly<Record<string, unknown>>): ToolResult { return { schema_version: "agent_tool_result.v1", request_id: null, status: "ok", data, warnings: [], error: null }; }
 function delta(chunk: string): Readonly<Record<string, unknown>> { return { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: chunk } }; }
+function numeric(value: string): Readonly<Record<string, unknown>> { return { value, unit: "percent", definition: "Bank Rate", as_of: "2026-08-01", source_date: "2026-08-01" }; }
+function projectionField(value: unknown, name: string): unknown { return typeof value === "object" && value !== null && !Array.isArray(value) ? Reflect.get(value, name) : undefined; }
 function itemArgs(args: unknown): { readonly items?: number } { if (typeof args !== "object" || args === null || Array.isArray(args)) return {}; const record = args as Readonly<Record<string, unknown>>; return typeof record["limit"] === "number" ? { items: record["limit"] } : {}; }
 function errorResult(error: unknown): ToolResult { const code = error instanceof BudgetExceeded ? "BUDGET_EXCEEDED" : error instanceof TurnDeadlineExceeded ? "TURN_DEADLINE_EXCEEDED" : error instanceof TurnCancelled ? "TURN_CANCELLED" : "INTERNAL_ERROR"; return { schema_version: "agent_tool_result.v1", request_id: null, status: "error", data: null, warnings: [], error: { code, message: code, retryable: false } }; }

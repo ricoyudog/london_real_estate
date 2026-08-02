@@ -42,11 +42,11 @@ function migratedStore(): string {
   return dataDir;
 }
 
-function withHelper(dataDir: string): FacadeLauncher {
+function withHelper(dataDir: string, kill?: typeof process.kill): FacadeLauncher {
   const helper = join(mkdtempSync(join(tmpdir(), "facade-bin-")), "nan-fung-agent-tools");
   copyFileSync(helperSource, helper);
   chmodSync(helper, 0o700);
-  return new FacadeLauncher({ creDataDir: dataDir, binaryPath: helper });
+  return new FacadeLauncher({ creDataDir: dataDir, binaryPath: helper, ...(kill === undefined ? {} : { kill }) });
 }
 
 async function waitForGone(pids: readonly number[]): Promise<void> {
@@ -195,4 +195,20 @@ test("m: clean-wheel probe resolves the four packaged regular non-symlink files"
   execFileSync("uv", ["pip", "install", "--python", join(venv, "bin/python"), wheel], { cwd: worktreeRoot });
   const output = execFileSync(join(venv, "bin/python"), ["-c", "import importlib.resources as r,json,os,stat; d=r.files('nan_fung.agent_tools'); names=['agent_tool_contracts.v1.json','agent_tool_request.v1.schema.json','agent_tool_result.v1.schema.json','agent_tool_contract_catalog.v1.schema.json']; print(json.dumps({n:stat.S_ISREG(os.lstat(d.joinpath(n)).st_mode) and not os.path.islink(d.joinpath(n)) for n in names}))"], { cwd: root, encoding: "utf8" });
   assert.deepEqual(Object.values(JSON.parse(output)), [true, true, true, true]);
+});
+
+test("n: EPERM during process-group cleanup becomes a typed protocol failure", async () => {
+  // Given: cleanup lacks permission to signal the detached process group
+  const deniedKill: typeof process.kill = (_pid, _signal) => {
+    const error = new Error("operation not permitted");
+    Object.assign(error, { code: "EPERM" });
+    throw error;
+  };
+
+  // When: a normally exiting child reaches cleanup
+  const result = await withHelper(migratedStore(), deniedKill).invoke("describe_market_data", request("call_parent_exit"));
+
+  // Then: cleanup cannot be reported as successful
+  assert.equal(result.status, "error");
+  assert.equal(result.error?.code, "PROTOCOL_ERROR");
 });
