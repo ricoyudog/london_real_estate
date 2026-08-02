@@ -105,8 +105,10 @@ test("e: stdout overflow becomes typed and kills the process group", async () =>
 
 test("f: timeout applies the bounded group cleanup", async () => {
   const dataDir = migratedStore();
-  const result = await withHelper(dataDir).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 0.5 });
+  const startedAt = performance.now();
+  const result = await withHelper(dataDir).invoke("describe_market_data", request("call_timeout"));
   assert.equal(result.error?.code, "TIMEOUT");
+  assert.ok(performance.now() - startedAt >= 10_000);
   await waitForGone(readFileSync(join(dataDir, "call_timeout.pids"), "utf8").trim().split("\n").map(Number));
 });
 
