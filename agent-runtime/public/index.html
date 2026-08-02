@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="A source-grounded London market research workspace." />
+    <link rel="icon" href="data:," />
+    <title>London Market Desk</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">Skip to workspace</a>
+
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="brand-lockup">
+          <p class="eyebrow">Evidence-led market research</p>
+          <h1>London Market Desk</h1>
+        </div>
+        <p id="connection-status" class="connection-status" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="connection-label">Starting a secure session…</span>
+        </p>
+      </header>
+
+      <main id="workspace">
+        <section class="editorial-intro" aria-labelledby="workspace-title">
+          <div>
+            <p class="eyebrow">Research workspace / London office</p>
+            <h2 id="workspace-title">Ask for the signal.<br />Keep the evidence.</h2>
+          </div>
+          <p class="intro-copy">A deliberately small market desk for source-grounded questions. At launch, the only supported numeric signal is the UK Bank Rate; missing coverage stays visible as missing.</p>
+        </section>
+
+        <section class="overview-section" aria-labelledby="overview-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Canonical snapshot</p>
+              <h2 id="overview-title">Current coverage</h2>
+            </div>
+            <p id="overview-status" class="section-state" role="status">Loading the latest verified record…</p>
+          </div>
+
+          <div class="metric-grid">
+            <article id="bank-rate-card" class="metric-card metric-card--primary" data-status="loading" aria-labelledby="bank-rate-label">
+              <p id="bank-rate-label" class="metric-label">UK Bank Rate</p>
+              <p id="bank-rate-value" class="metric-value">—</p>
+              <p id="bank-rate-detail" class="metric-detail">Checking canonical coverage.</p>
+              <dl id="bank-rate-meta" class="metric-meta"></dl>
+            </article>
+            <div id="coverage-grid" class="coverage-grid" aria-live="polite" aria-label="Market data coverage"></div>
+          </div>
+        </section>
+
+        <section class="conversation-grid" aria-label="Market analyst conversation">
+          <section class="chat-panel" aria-labelledby="chat-title">
+            <div class="section-heading section-heading--chat">
+              <div>
+                <p class="eyebrow">Analyst conversation</p>
+                <h2 id="chat-title">What would you like to examine?</h2>
+              </div>
+              <p id="turn-status" class="section-state" role="status" aria-live="polite">Ready when the session is available.</p>
+            </div>
+
+            <div id="transcript" class="transcript" role="log" aria-live="polite" aria-relevant="additions">
+              <article class="message message--system">
+                <p class="message-label">Desk note</p>
+                <p>Final answers appear only after the host has validated their evidence and source lineage.</p>
+              </article>
+            </div>
+
+            <div class="prompt-strip" aria-label="Suggested questions">
+              <p class="prompt-strip__label">Try asking</p>
+              <div class="prompt-list">
+                <button class="prompt-chip" type="button" data-prompt="What is the latest UK Bank Rate? Please include sources.">Latest Bank Rate</button>
+                <button class="prompt-chip" type="button" data-prompt="Give me a London office market overview and clearly identify unavailable data.">London office overview</button>
+                <button class="prompt-chip" type="button" data-prompt="What is the latest West End vacancy rate?">West End vacancy</button>
+              </div>
+            </div>
+
+            <form id="chat-form" class="chat-form">
+              <label class="visually-hidden" for="chat-input">Your market research question</label>
+              <textarea id="chat-input" name="message" rows="3" maxlength="4000" placeholder="Ask a source-grounded market question…" required disabled></textarea>
+              <div class="chat-form__footer">
+                <p id="input-help">Responses are limited to host-validated market artifacts.</p>
+                <button id="send-button" class="send-button" type="submit" disabled>
+                  <span>Send question</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <aside class="brief-panel" aria-labelledby="brief-title">
+            <div class="section-heading section-heading--brief">
+              <div>
+                <p class="eyebrow">Host-validated result</p>
+                <h2 id="brief-title">Market brief</h2>
+              </div>
+              <p id="brief-status" class="brief-status" data-status="waiting">Waiting</p>
+            </div>
+
+            <div id="artifact-content" class="artifact-content" aria-live="polite" aria-atomic="false">
+              <p class="empty-artifact">Submit a question to receive a source-grounded final brief.</p>
+            </div>
+
+            <details id="source-drawer" class="source-drawer" hidden>
+              <summary id="source-summary">Sources</summary>
+              <ul id="source-list" class="source-list"></ul>
+            </details>
+          </aside>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p>Numbers shown here come from host-validated artifacts, never from streaming model prose.</p>
+        <p>Session credentials stay in this page’s memory and are never placed in a URL.</p>
+      </footer>
+    </div>
+  </body>
+</html>

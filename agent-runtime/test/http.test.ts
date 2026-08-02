@@ -160,3 +160,60 @@ test("(h) unknown routes return 404 and known routes reject wrong methods", asyn
   assert.equal(malformed.status, 404);
   assert.equal(wrongMethod.status, 405);
 });
+
+test("(i) dashboard overview is bearer-scoped and projects only trusted server data", async (t) => {
+  const registry = new SessionRegistry();
+  let observedScope: string | undefined;
+  const overview = {
+    schema_version: "dashboard_overview.v1" as const,
+    bank_rate: {
+      status: "available" as const, value: "5.25", unit: "percent", definition: "Official Bank Rate", as_of: "2026-08-02T00:00:00Z",
+      source_date: "2026-08-01", period_label: "1 Aug 2026", freshness: { retrieval: "fresh", observation: "fresh", degraded: false },
+      source: { publisher: "Bank of England", title: null, public_url: null, published_at: null }, reason: null,
+    },
+    coverage: [{ capability_id: "london-prime-rent", status: "blocked" as const, reason: "Product coverage is not approved.", retrieval_freshness: "unknown", observation_freshness: "unknown", degraded: null }],
+  };
+  const server = createServer(registry, {
+    dashboard: {
+      overview: async (session) => { observedScope = session.scope_id; return overview; },
+    },
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  const origin = `http://127.0.0.1:${address.port}`;
+  t.after(() => closeServer(server));
+  const session = await createSession({ registry, origin, close: async () => undefined });
+  const path = `${origin}/v1/sessions/${session.id}/dashboard/overview`;
+
+  const missing = await fetch(path);
+  const response = await fetch(path, { headers: authorized(session.bearer) });
+
+  assert.equal(missing.status, 401);
+  assert.equal(response.status, 200);
+  assert.equal(observedScope, session.scope_id);
+  assert.deepEqual(await response.json(), overview);
+});
+
+test("(j) dashboard assets are served from an explicit allowlist", async (t) => {
+  const registry = new SessionRegistry();
+  const server = createServer(registry, {
+    staticAssets: new Map([
+      ["/", { content: "<main>London Market Desk</main>", contentType: "text/html; charset=utf-8" }],
+      ["/app.js", { content: "console.log('ready')", contentType: "text/javascript; charset=utf-8" }],
+    ]),
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  const origin = `http://127.0.0.1:${address.port}`;
+  t.after(() => closeServer(server));
+
+  const page = await fetch(`${origin}/`);
+  const asset = await fetch(`${origin}/app.js`);
+  const missing = await fetch(`${origin}/missing.css`);
+
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.equal(await page.text(), "<main>London Market Desk</main>");
+  assert.equal(asset.status, 200);
+  assert.equal(missing.status, 404);
+});

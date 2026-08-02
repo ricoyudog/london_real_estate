@@ -5,6 +5,7 @@ import process from "node:process";
 import { ApprovalCoordinator, type PendingApproval } from "./approval.ts";
 import { bootRuntime, type BootOptions } from "./boot.ts";
 import { CancelCoordinator } from "./cancel.ts";
+import { DashboardService } from "./dashboard.ts";
 import { FacadeLauncher } from "./facade-launcher.ts";
 import { finalizeBrief } from "./finalizer.ts";
 import { createServer } from "./http.ts";
@@ -14,6 +15,7 @@ import type { ToolResult } from "./facade-launcher.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { LifecycleReducer } from "./runtime.ts";
 import { projectLifecycle, SseHub, SseProtocolError } from "./sse.ts";
+import { loadDashboardAssets, type StaticAssets } from "./static-assets.ts";
 import { runTurn, type TurnOutcome } from "./turn-runner.ts";
 
 export interface AppDeps {
@@ -24,6 +26,7 @@ export interface AppDeps {
   readonly modelsOverride?: unknown;
   readonly createSession?: BootOptions["createSession"];
   readonly now?: () => number;
+  readonly staticAssets?: StaticAssets;
 }
 
 export type App = {
@@ -43,6 +46,7 @@ export async function createApp(deps: AppDeps): Promise<App> {
   const hub = new SseHub(registry, { recovery, ...(deps.now === undefined ? {} : { now: deps.now }) });
   const cancel = new CancelCoordinator({ registry, hub });
   const launcher = deps.launcher ?? new FacadeLauncher({ creDataDir: deps.creDataDir, ...(deps.assetsDir === undefined ? {} : { assetsDir: deps.assetsDir }) });
+  const dashboard = new DashboardService({ ctx: deps.ctx, launcher });
   const approval = new ApprovalCoordinator({ registry, launcher, hub, ...(deps.now === undefined ? {} : { now: deps.now }) });
   const started = new Set<string>();
   const bootedSessions = new Set<unknown>();
@@ -94,7 +98,10 @@ export async function createApp(deps: AppDeps): Promise<App> {
     }
   };
 
-  const server = createServer(registry, { sse: hub, recovery, cancel, approval, runTurn: async (sessionId, turnId, message) => { await execute(sessionId, turnId, message); } });
+  const server = createServer(registry, {
+    sse: hub, recovery, cancel, approval, dashboard, staticAssets: deps.staticAssets ?? loadDashboardAssets(),
+    runTurn: async (sessionId, turnId, message) => { await execute(sessionId, turnId, message); },
+  });
   return {
     server, registry, hub, recovery, cancel, approval,
     runTurnForSession: async (sessionId, userMessage) => {

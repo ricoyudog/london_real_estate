@@ -34,9 +34,22 @@ function request(requestId: string, argumentsValue: Readonly<Record<string, unkn
   };
 }
 
+function record(value: unknown): Readonly<Record<string, unknown>> {
+  assert.ok(typeof value === "object" && value !== null && !Array.isArray(value));
+  return value as Readonly<Record<string, unknown>>;
+}
+
 function migratedStore(): string {
   const dataDir = join(mkdtempSync(join(tmpdir(), "facade-store-")), "seed-data");
   execFileSync("uv", ["run", "cre", "--data-dir", dataDir, "db", "migrate"], {
+    cwd: worktreeRoot,
+  });
+  return dataDir;
+}
+
+function seededBankRateStore(): string {
+  const dataDir = join(mkdtempSync(join(tmpdir(), "facade-bank-rate-")), "seed-data");
+  execFileSync("uv", ["run", "python", "agent-runtime/test/helpers/seed_bank_rate.py", dataDir, "5.25"], {
     cwd: worktreeRoot,
   });
   return dataDir;
@@ -92,6 +105,27 @@ test("a/b: real facade uses the explicit migrated store from an unrelated parent
   }
 });
 
+test("a.1: real facade accepts the seeded canonical citation locator", async () => {
+  const launcher = new FacadeLauncher({ creDataDir: seededBankRateStore() });
+  const queryRequest = request("call_seeded_query", {
+    capability_id: "uk.bank-rate-current", query_kind: "metrics",
+  });
+  queryRequest.host_context.capability_scope_id = "scope_seeded_citation";
+  const query = await launcher.invoke("query_market_data", queryRequest);
+  assert.equal(query.status, "ok");
+  const records = query.data?.["records"];
+  assert.ok(Array.isArray(records) && records.length === 1);
+  const citationRefs = record(records[0])["citation_refs"];
+  assert.ok(Array.isArray(citationRefs) && typeof citationRefs[0] === "string");
+
+  const citationRequest = request("call_seeded_citation", { citation_refs: [citationRefs[0]] });
+  citationRequest.host_context.capability_scope_id = "scope_seeded_citation";
+  const citation = await launcher.invoke("get_citation_metadata", citationRequest);
+
+  assert.equal(citation.status, "ok");
+  assert.equal(Array.isArray(citation.data?.["citations"]) && citation.data?.["citations"].length, 1);
+});
+
 test("c: FD3 is exactly 32 bytes and its key is absent from argv, env, and stdin", async () => {
   const dataDir = migratedStore();
   const result = await withHelper(dataDir).invoke("describe_market_data", request("call_key"));
@@ -138,6 +172,35 @@ test("g: cancellation applies the same bounded group cleanup", async () => {
   controller.abort();
   const result = await invocation;
   assert.equal(result.error?.code, "TIMEOUT");
+  await waitForGone(pids);
+});
+
+test("g.1: post-SIGKILL liveness EPERM does not mask a cancellation timeout", async () => {
+  const dataDir = migratedStore();
+  const controller = new AbortController();
+  let sigkillSent = false;
+  let postKillLivenessProbes = 0;
+  const transientPostKillEperm: typeof process.kill = (pid, signal) => {
+    if (signal === 0 && sigkillSent) {
+      postKillLivenessProbes += 1;
+      if (postKillLivenessProbes === 1) {
+        const error = new Error("process group is reaping");
+        Object.assign(error, { code: "EPERM" });
+        throw error;
+      }
+    }
+    const result = process.kill(pid, signal);
+    if (signal === "SIGKILL") sigkillSent = true;
+    return result;
+  };
+  const invocation = withHelper(dataDir, transientPostKillEperm).invoke("describe_market_data", request("call_cancel"), { cancelEvent: controller.signal });
+  const pids = await waitForPidFile(join(dataDir, "call_cancel.pids"));
+
+  controller.abort();
+
+  const result = await invocation;
+  assert.equal(result.error?.code, "TIMEOUT");
+  assert.ok(postKillLivenessProbes >= 2);
   await waitForGone(pids);
 });
 

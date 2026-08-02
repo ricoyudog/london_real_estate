@@ -133,7 +133,7 @@ def test_partial_query_and_citation_fixtures_keep_their_selected_data_contracts(
         assert isinstance(warnings, list) and warnings
 
 
-def test_opaque_projections_are_explicitly_bounded_and_do_not_accept_nested_objects() -> None:
+def test_opaque_projections_are_explicitly_bounded_and_accept_safe_nested_locators() -> None:
     catalog = load_tool_contracts()
     describe_schema = catalog["describe_market_data"].success_data_schema
     query_schema = catalog["query_market_data"].success_data_schema
@@ -146,9 +146,17 @@ def test_opaque_projections_are_explicitly_bounded_and_do_not_accept_nested_obje
     assert isinstance(query, dict)
     assert isinstance(citation, dict)
 
+    citation["citations"][0]["locator"] = {
+        "evidence_id": "evidence_001",
+        "role": "primary",
+        "record_locator": {"kind": "csv_row", "row_key": "2026-07-31"},
+    }
+
+    assert _validator(citation_schema).is_valid(citation)
+
     describe["capabilities"][0]["geography"] = {"nested": {"unbounded": "object"}}
     query["records"][0]["payload"] = {"nested": {"unbounded": "object"}}
-    citation["citations"][0]["locator"] = {"nested": {"unbounded": "object"}}
+    citation["citations"][0]["locator"] = {str(index): index for index in range(65)}
 
     assert not _validator(describe_schema).is_valid(describe)
     assert not _validator(query_schema).is_valid(query)

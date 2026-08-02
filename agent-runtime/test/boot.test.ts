@@ -202,6 +202,67 @@ test("(k) exact tool assertion excludes Pi built-ins", () => {
   }
 });
 
+test("(l) boot registers the fixed GLM model from generic PI environment", async () => {
+  // Given: the deployment-facing GLM configuration is present without provider-specific names.
+  const prior = captureEnv("PI_MODEL", "PI_BASE_URL", "PI_API_KEY", "CRE_DATA_DIR");
+  process.env.PI_MODEL = "glm/GLM-5.2";
+  process.env.PI_BASE_URL = "https://example.test/v1";
+  process.env.PI_API_KEY = "test-key";
+  process.env.CRE_DATA_DIR = mkdtempSync(join(tmpdir(), "boot-data-"));
+  let captured: Parameters<NonNullable<BootOptions["createSession"]>>[0] | undefined;
+
+  try {
+    // When: production boot creates its own ModelRuntime.
+    await bootRuntime(context, {
+      createSession: async (options) => {
+        captured = options;
+        return { session: { activeToolNames: expectedTools } };
+      },
+    });
+
+    // Then: exactly the configured GLM model is selected with configured authentication.
+    assert.ok(captured);
+    const selectedModel = captured.model;
+    assert.ok(selectedModel);
+    assert.equal(selectedModel.provider, "glm");
+    assert.equal(selectedModel.id, "GLM-5.2");
+  } finally {
+    restoreCapturedEnv(prior);
+  }
+});
+
+test("(m) boot rejects a missing generic PI API key", async () => {
+  // Given: the fixed model and endpoint, but no credential.
+  const prior = captureEnv("PI_MODEL", "PI_BASE_URL", "PI_API_KEY", "CRE_DATA_DIR");
+  process.env.PI_MODEL = "glm/GLM-5.2";
+  process.env.PI_BASE_URL = "https://example.test/v1";
+  delete process.env.PI_API_KEY;
+  process.env.CRE_DATA_DIR = mkdtempSync(join(tmpdir(), "boot-data-"));
+
+  try {
+    // When / Then: boot fails before Pi creates a session.
+    await assert.rejects(bootRuntime(context), new BootError("PI_API_KEY required"));
+  } finally {
+    restoreCapturedEnv(prior);
+  }
+});
+
+test("(n) the macro skill treats an unqualified request as the latest canonical view", () => {
+  // Given: the exact host-preloaded macro skill.
+
+  // Then: it does not make a date clarification a precondition for querying available data.
+  assert.doesNotMatch(macroSkill, /ask which time they mean before making any data call/i);
+  assert.match(macroSkill, /unqualified request.*latest canonical/i);
+});
+
+test("(o) the brief skill gives blocked coverage an empty unavailable shape", () => {
+  // Given: the exact host-preloaded finalization skill.
+
+  // Then: blocked coverage cannot be represented as an uncited qualitative fact.
+  assert.match(briefSkill, /status: unavailable.*facts: \[\].*inferences: \[\]/s);
+  assert.match(briefSkill, /do not create a qualitative coverage fact/i);
+});
+
 function fakeBootOptions(): BootOptions {
   return {
     modelsOverride: { getModel: () => ({ provider: "faux", id: "model" }) },
@@ -223,4 +284,12 @@ function resolveManifest(value: SkillManifest): SkillManifest {
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
+}
+
+function captureEnv(...names: readonly string[]): Readonly<Record<string, string | undefined>> {
+  return Object.fromEntries(names.map((name) => [name, process.env[name]]));
+}
+
+function restoreCapturedEnv(values: Readonly<Record<string, string | undefined>>): void {
+  for (const [name, value] of Object.entries(values)) restoreEnv(name, value);
 }

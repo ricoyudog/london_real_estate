@@ -54,3 +54,5 @@ Don't derive one confidence from another or merge them.
 `published_at` may be null. Surface a publication-date warning when it is null, and never invent a date.
 
 When coverage is insufficient, set status to `partial` or `unavailable` and name the limitation. Don't fill unavailable coverage with model prose that implies a number. Use only facts supported by resolved citations.
+
+For a capability reported as blocked or unavailable, submit `status: unavailable` with `facts: []` and `inferences: []`. Put the coverage reason only in `limitations`; do not create a qualitative coverage fact without a resolved citation.

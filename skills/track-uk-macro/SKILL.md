@@ -10,7 +10,7 @@ type: skill
 
 Call `describe_market_data` before any query. It is the authority for product coverage, query kinds, limitations, blocked reasons, canonical availability, and allowed refresh profiles. At launch, only `uk.bank-rate-current` is supported. Do not claim that London office rent, vacancy, or transaction data is available. That coverage is blocked.
 
-If the user's time reference would materially change the answer and they have not specified it, ask which time they mean before making any data call. Make zero data calls until they answer.
+An unqualified request uses the latest canonical data: query without `as_of`, then state the returned canonical anchor. Do not impose a date clarification before the available capability is queried.
 
 ## Query canonical data
 

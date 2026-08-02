@@ -17,6 +17,7 @@
     { "category": "english hyphenated", "text": "thirty-one" },
     { "category": "chinese numeral", "text": "五" },
     { "category": "chinese percentage", "text": "百分之五" },
+    { "category": "chinese currency expression", "text": "租金為五十英鎊" },
     { "category": "chinese financial", "text": "伍佰" },
     { "category": "nfkc full width", "text": "５" }
   ],
@@ -24,6 +25,7 @@
     { "category": "ordinary prose", "text": "The Bank of England publishes a market brief." },
     { "category": "article prose", "text": "A brief overview explains market conditions." },
     { "category": "cjk prose", "text": "利率可能影响租金" },
+    { "category": "cjk quantity prose", "text": "我將生成一份不可用的市場簡報。" },
     { "category": "qualitative prose", "text": "Demand remains resilient despite uncertainty." }
   ]
 }

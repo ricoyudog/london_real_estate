@@ -12,12 +12,19 @@ updated: 2026-08-02
 - **Phase**: none
 - **Branch**: main (tracking origin/main)
 
-## Done (last session completed)
+## Done (2026-08-02 runtime/dashboard delivery)
+- Removed the host-side date clarification gate. An unqualified request now reaches Pi and uses the latest canonical view while preserving `as_of` and freshness.
+- Fixed the real runtime citation contract and finalized the safe `unavailable` path. Chinese TC-01 and real GLM Bank Rate E2E both passed through Pi, Facade, SQLite and the host finalizer.
+- Delivered the same-origin London Market Desk dashboard, actual browser UI screenshots, and a Docker read-only service. The seeded-container browser run passed TC-01 with `facts = 0`, hidden sources and no console errors.
+- Added first-use / data-pipeline documentation, screenshot-backed README guidance, and a six-slide architecture-and-demo deck in `docs/`.
+- Final verification: Node deterministic suite 163 passed / 2 opt-in skips, typecheck passed, real GLM E2E passed. Python suite has the pre-existing unrelated submarket-mapping failure (380 passed, 1 failed).
+
+## Done (historical)
 - Phase 2 Pi Agent Runtime (2a/2b/2c) complete and merged to `main`; all mandatory gates passed.
 - Authored [[wiki/decisions/datasource-database-and-scheduled-ingestion]] and indexed it under `wiki/decisions/`.
 - Decision covers the full target: versioned datasource/source registry, SQLite＋CAS, durable attempts/scheduler/watermarks, immutable evidence/revisions, correct latest/as-of, manual review, all datasource schedules/backfills, access/retention, read API, operations, a Phase 0 governance gate and 12 delivery phases.
 - Architecture, codebase and source-research reviews were applied; late-approval regression, cross-stream FKs, replay versioning, snapshot deletion scope, manual-promotion provenance and legal gates are explicit.
-- Prior baseline remains initial commit `1d4af7f`; no implementation code was changed in this session.
+- Prior baseline remains initial commit `1d4af7f`.
 - Initialised git in this folder, wired `origin` → `ricoyudog/london_real_estate`
 - Discovered existing Python codebase (was NOT empty — `src/nan_fung/datasources/` + 7 skills + 31 tests already present)
 - Expanded `.gitignore` (Python/venv/caches/tooling state), verified `pytest -m "not live"` → 18 passed
@@ -25,6 +32,8 @@ updated: 2026-08-02
 - Initial commit `1d4af7f` pushed to `origin/main` — 71 files, 4059 insertions
 
 ## Waiting (next steps / blockers)
+- Only UK Bank Rate is current product coverage. Prime rent, vacancy, transactions and ranked news require approved canonical evidence before their dashboard cards become answerable.
+- `tests/test_submarket_mapping.py::test_approved_manual_mapping_becomes_a_canonical_geography_record` remains an unrelated baseline failure and was not changed in this delivery.
 - Historical datasource-planning note: decision remained `status: proposed`; run Phase 0 source approvals, then Phase 1 executable DDL/lifecycle/clean-wheel spike before changing it to `accepted`.
 - PLD, MPC content, BNP and Rightmove cannot production-promote until their named licence/retention gates pass; engineering completion must retain blocked/degraded behavior.
 - Consider setting `git config user.name` / `user.email` globally — current commits use auto-detected `chunsing yu <chunsingyu@chunsingdeMac-mini.local>`.

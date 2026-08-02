@@ -4,13 +4,13 @@ import test from "node:test";
 import type { BootedRuntime } from "../src/boot.ts";
 import type { ToolResult } from "../src/facade-launcher.ts";
 import { BudgetExceeded, TurnCancelled, TurnContext, TurnDeadlineExceeded, defaultTurnLimits, type SessionContext } from "../src/runtime.ts";
-import { cancelTurn, requiresClarification, resumeTurn, runTurn } from "../src/turn-runner.ts";
+import { cancelTurn, resumeTurn, runTurn } from "../src/turn-runner.ts";
 
 const context: SessionContext = { principal: "principal", capability_scope_id: "scope", allowed_access_classes: ["open"], allowed_capability_ids: ["capability"], allowed_refresh_profiles: ["profile"] };
 
 test("(a) 9th facade call is rejected", async () => { const runtime = fake(async (driver) => { for (let index = 0; index < 9; index += 1) await driver.call("describe_market_data", {}); }); await run(runtime); assert.equal(runtime.results.at(-1)?.error?.code, "BUDGET_EXCEEDED"); });
 test("(b) 4th status poll is rejected", async () => { const runtime = fake(async (driver) => { for (let index = 0; index < 4; index += 1) await driver.call("get_refresh_status", { job_ref: `${index}` }); }); await run(runtime); assert.equal(runtime.results.at(-1)?.error?.code, "BUDGET_EXCEEDED"); });
-test("(c) 3rd finalization is rejected", async () => { const runtime = fake(async (driver) => { for (let index = 0; index < 3; index += 1) await driver.call("finalize_market_brief", {}); }); await run(runtime); assert.equal(runtime.results.at(-1)?.error?.code, "BUDGET_EXCEEDED"); });
+test("(c) 3rd unsuccessful finalization is rejected", async () => { const runtime = fake(async (driver) => { for (let index = 0; index < 3; index += 1) await driver.call("finalize_market_brief", {}); }, [failed(), failed()]); await run(runtime); assert.equal(runtime.results.at(-1)?.error?.code, "BUDGET_EXCEEDED"); });
 test("(d) 21st query item is rejected", async () => { const runtime = fake(async (driver) => { await driver.call("query_market_data", { limit: 21 }); }); await run(runtime); assert.equal(runtime.results[0]?.error?.code, "BUDGET_EXCEEDED"); });
 test("(e) 41st cumulative record is rejected", async () => { const runtime = fake(async (driver) => { await driver.call("query_market_data", { limit: 20 }); await driver.call("query_market_data", { limit: 20 }); await driver.call("describe_market_data", {}); }, [ok({ records: records(20) }), ok({ records: records(20) }), ok({ records: records(1) })]); await run(runtime); assert.equal(runtime.results.at(-1)?.error?.code, "BUDGET_EXCEEDED"); });
 test("(f) 128 KiB plus one model bytes is rejected", async () => { const runtime = fake(async (driver) => { await driver.call("describe_market_data", {}); }, [ok({ blob: "x".repeat(defaultTurnLimits.cumulativeModelToolBytes) })]); await run(runtime); assert.equal(runtime.results[0]?.error?.code, "BUDGET_EXCEEDED"); });
@@ -18,15 +18,28 @@ test("(g) polling respects poll_after_seconds", async () => { const runtime = fa
 test("(h) deadline is surfaced as a typed error", async () => { const runtime = fake(async (driver) => { runtime.advance(45_000); await driver.call("describe_market_data", {}); }); await run(runtime); assert.equal(runtime.results[0]?.error?.code, "TURN_DEADLINE_EXCEEDED"); });
 test("(i) terminal refresh requires re-query before finalization", async () => { const runtime = fake(async (driver) => { await driver.call("get_refresh_status", { job_ref: "job" }); await driver.call("finalize_market_brief", {}); await driver.call("query_market_data", { limit: 1 }); await driver.call("finalize_market_brief", {}); }, [ok({ job_ref: "job", job_state: "succeeded", canonical_changed: true }), ok({ records: [] })]); await run(runtime); assert.equal(runtime.results[1]?.error?.code, "REQUERY_REQUIRED"); assert.equal(runtime.results[3]?.status, "ok"); });
 test("(j) cancel retains durable refresh and produces cancelled", async () => { const runtime = fake(async (driver) => { await driver.call("request_data_refresh", {}); cancelTurn(runtime.booted); }); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "cancelled"); assert.equal(outcome.artifact, undefined); assert.equal(runtime.calls[0], "request_data_refresh"); });
-test("(k) an ambiguous request clarifies with zero calls", async () => { const runtime = fake(async () => { throw new Error("must not prompt"); }); const outcome = await runTurn(runtime.booted, "what is the bank rate", { now: runtime.now }); assert.equal(outcome.clarification_requested, true); assert.equal(runtime.calls.length, 0); });
-test("(l) latest has a time anchor and prompts Pi", async () => { const runtime = fake(async () => undefined); await run(runtime); assert.equal(runtime.prompts, 1); assert.equal(requiresClarification("latest bank rate"), false); });
+test("(k) a time-free request always reaches Pi instead of host clarification", async () => { const runtime = fake(async () => undefined); const outcome = await runTurn(runtime.booted, "倫敦金融城本季 Prime office rent 是多少？", { now: runtime.now }); assert.equal(runtime.prompts, 1); assert.equal(outcome.clarification_requested, undefined); });
+test("(l) explicit latest requests still prompt Pi", async () => { const runtime = fake(async () => undefined); await run(runtime); assert.equal(runtime.prompts, 1); });
 test("(m) continuation reuses its original context and deadline", async () => { const runtime = fake(async () => undefined); const outcome = await run(runtime); const turn = outcome.turn; runtime.advance(1_000); const remaining = turn.getDeadlineRemainingMs(); const resumed = await resumeTurn(runtime.booted, outcome); assert.equal(resumed.turn, turn); assert.equal(turn.getDeadlineRemainingMs(), remaining); });
+test("(m.1) a stalled Pi prompt reaches deadline and is aborted", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const runtime = fake(async () => undefined, [], { stallPromptUntilAbort: true });
+  const pending = run(runtime);
+
+  t.mock.timers.tick(defaultTurnLimits.turnDeadlineMs);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.equal(runtime.aborts, 1);
+  const outcome = await pending;
+  assert.equal(outcome.terminal_state, "failed");
+  assert.deepEqual(outcome.events.map((event) => event.type), ["turn.started", "turn.failed"]);
+  assert.equal(runtime.booted.getTurnContext(), undefined);
+});
 test("(n) split numeric model text fails without an artifact", async () => { const runtime = fake(async (_driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); }); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.artifact, undefined); });
-test("(o) analysis questions default to the latest canonical data", () => { assert.equal(requiresClarification("How might UK interest rates affect London office rents?"), false); });
-test("(p) value lookups without a time anchor still clarify", () => { assert.equal(requiresClarification("What is the Bank of England base rate?"), true); });
-test("(q) latest value lookups do not clarify", () => { assert.equal(requiresClarification("Show the latest Bank Rate"), false); });
-test("(r) analysis markers do not require a time anchor", () => { assert.equal(requiresClarification("How does inflation influence office demand?"), false); });
-test("(s) natural-language dates do not require clarification", () => { assert.equal(requiresClarification("What was the rate in January 2026?"), false); });
+test("(n.0) host finalization supersedes earlier numeric model prose", async () => { const runtime = fake(async (driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); await driver.call("finalize_market_brief", {}); }, [ok({ schema_version: "market_brief.v1" })]); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "completed"); assert.deepEqual(outcome.artifact, { schema_version: "market_brief.v1" }); });
+test("(n.1) host finalization ignores later model prose", async () => { const runtime = fake(async (driver, emit) => { await driver.call("finalize_market_brief", {}); emit(delta("1.")); }, [ok({ schema_version: "market_brief.v1" })]); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "completed"); assert.deepEqual(outcome.artifact, { schema_version: "market_brief.v1" }); });
+test("(n.2) host finalization rejects all later tool calls", async () => { const runtime = fake(async (driver) => { await driver.call("finalize_market_brief", {}); await driver.call("describe_market_data", {}); }, [ok({ schema_version: "market_brief.v1" })]); await run(runtime); assert.equal(runtime.results[1]?.error?.code, "BRIEF_FINALIZED"); });
+test("(n.3) host finalization aborts the Pi session tool loop", async () => { const runtime = fake(async (driver) => { await driver.call("finalize_market_brief", {}); }, [ok({ schema_version: "market_brief.v1" })]); await run(runtime); assert.equal(runtime.aborts, 1); });
 test("(t) query and citation ledger entries preserve one projection per citation", async () => {
   const runtime = fake(async (driver) => {
     await driver.call("query_market_data", {});
@@ -57,17 +70,19 @@ test("(t) query and citation ledger entries preserve one projection per citation
 
 type Driver = { readonly call: (toolName: string, args: unknown) => Promise<void> };
 type Policy = { readonly preToolCall?: (toolName: string, args: unknown, turn: TurnContext) => ToolResult | undefined; readonly onResult?: (toolName: string, result: ToolResult, turn: TurnContext) => void };
-function fake(script: (driver: Driver, emit: (event: Readonly<Record<string, unknown>>) => void) => Promise<void>, responses: readonly ToolResult[] = []) {
-  let time = 0; let active: TurnContext | undefined; let policies: Policy = {}; let prompts = 0; const calls: string[] = []; const results: ToolResult[] = []; const queue = [...responses]; const listeners = new Set<(event: Readonly<Record<string, unknown>>) => void>();
+type FakeOptions = { readonly stallPromptUntilAbort?: boolean };
+function fake(script: (driver: Driver, emit: (event: Readonly<Record<string, unknown>>) => void) => Promise<void>, responses: readonly ToolResult[] = [], options: FakeOptions = {}) {
+  let time = 0; let active: TurnContext | undefined; let policies: Policy = {}; let prompts = 0; let aborts = 0; let resumePrompt: (() => void) | undefined; const calls: string[] = []; const results: ToolResult[] = []; const queue = [...responses]; const listeners = new Set<(event: Readonly<Record<string, unknown>>) => void>();
   const driver: Driver = { async call(toolName, args) { const turn = active; assert.ok(turn); const blocked = policies.preToolCall?.(toolName, args, turn); if (blocked !== undefined) { results.push(blocked); return; } try { turn.beforeToolCall(toolName, itemArgs(args)); const response = queue.shift() ?? ok({}); calls.push(toolName); policies.onResult?.(toolName, response, turn); results.push(response); } catch (error) { results.push(errorResult(error)); } } };
-  const session = { subscribe(listener: (event: Readonly<Record<string, unknown>>) => void) { listeners.add(listener); return () => listeners.delete(listener); }, async prompt() { prompts += 1; await script(driver, (event) => { for (const listener of listeners) listener(event); }); }, async abort() {} };
+  const session = { subscribe(listener: (event: Readonly<Record<string, unknown>>) => void) { listeners.add(listener); return () => listeners.delete(listener); }, async prompt() { prompts += 1; if (options.stallPromptUntilAbort) { await new Promise<void>((resolve) => { resumePrompt = resolve; }); return; } await script(driver, (event) => { for (const listener of listeners) listener(event); }); }, async abort() { aborts += 1; resumePrompt?.(); } };
   const tools = ["describe_market_data", "query_market_data", "get_refresh_status", "request_data_refresh", "finalize_market_brief"].map((name) => ({ name }));
   const booted: BootedRuntime = { session, tools: tools as BootedRuntime["tools"], ctx: context, launcher: {} as BootedRuntime["launcher"], async finalizeBrief() { return {}; }, getTurnContext: () => active, setTurnContext: (turn) => { active = turn; }, setTurnPolicies: (next) => { policies = next; } };
-  return { booted, now: () => time, advance: (milliseconds: number) => { time += milliseconds; }, calls, results, get prompts() { return prompts; } };
+  return { booted, now: () => time, advance: (milliseconds: number) => { time += milliseconds; }, calls, results, get prompts() { return prompts; }, get aborts() { return aborts; } };
 }
 async function run(runtime: ReturnType<typeof fake>) { return runTurn(runtime.booted, "latest market data", { now: runtime.now }); }
 function records(count: number): readonly Readonly<Record<string, unknown>>[] { return Array.from({ length: count }, () => ({ citation_refs: ["ref"] })); }
 function ok(data: Readonly<Record<string, unknown>>): ToolResult { return { schema_version: "agent_tool_result.v1", request_id: null, status: "ok", data, warnings: [], error: null }; }
+function failed(): ToolResult { return { schema_version: "agent_tool_result.v1", request_id: null, status: "error", data: null, warnings: [], error: { code: "INTERNAL_ERROR", message: "failed", retryable: false } }; }
 function delta(chunk: string): Readonly<Record<string, unknown>> { return { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: chunk } }; }
 function numeric(value: string): Readonly<Record<string, unknown>> { return { value, unit: "percent", definition: "Bank Rate", as_of: "2026-08-01", source_date: "2026-08-01" }; }
 function projectionField(value: unknown, name: string): unknown { return typeof value === "object" && value !== null && !Array.isArray(value) ? Reflect.get(value, name) : undefined; }

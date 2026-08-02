@@ -8,7 +8,11 @@ const numberWords = new RegExp(
   String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth|point|percent|gbp|usd|eur|jpy|cny|hkd)\b`,
   "iu",
 );
-const chineseNumerals = /[一二三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟]/u;
+const chineseNumeralCharacters = "零〇一二三四五六七八九十百千万亿壹贰叁肆伍陆柒捌玖拾佰仟萬億";
+const chineseNumericExpression = new RegExp(
+  String.raw`(?:百分之[${chineseNumeralCharacters}]+|第[${chineseNumeralCharacters}]+|[${chineseNumeralCharacters}]+(?:個)?(?:百分(?:點)?|成|點|元|英鎊|美元|港元|歐元|年|月|日|季|週|周|號|折)|(?<![\p{Script=Han}])[${chineseNumeralCharacters}]+(?![\p{Script=Han}]))`,
+  "u",
+);
 const unicodeNumber = /\p{N}/u;
 const percentOrCurrency = /[%％٪\p{Sc}]/u;
 
@@ -140,7 +144,7 @@ export class NumericGuard {
     if (tokenMatch?.[0] !== undefined) return tokenMatch[0];
     const wordMatch = normalized.match(numberWords);
     if (wordMatch?.[0] !== undefined) return wordMatch[0];
-    const chineseMatch = normalized.match(chineseNumerals);
+    const chineseMatch = normalized.match(chineseNumericExpression);
     return chineseMatch?.[0] ?? null;
   }
 }

@@ -1,7 +1,7 @@
 import type { BootedRuntime } from "./boot.ts";
 import type { ToolResult } from "./facade-launcher.ts";
 import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
-import { LifecycleReducer, type AgentEvent, TurnContext, defaultTurnLimits } from "./runtime.ts";
+import { LifecycleReducer, type AgentEvent, TurnContext, TurnDeadlineExceeded, defaultTurnLimits } from "./runtime.ts";
 import { modelVisibleBytes } from "./tools.ts";
 
 export type RunOptions = { readonly now?: () => number; readonly onTurnCreated?: (turn: TurnContext) => void; readonly populateLedger?: boolean };
@@ -17,7 +17,7 @@ type SessionEvent = Readonly<Record<string, unknown>>;
 type Session = {
   readonly subscribe: (listener: (event: SessionEvent) => void) => (() => void) | void;
   readonly prompt: (message: string) => Promise<void>;
-  readonly abort?: () => Promise<void>;
+  readonly abort: () => Promise<void>;
 };
 
 type RunnerState = {
@@ -33,12 +33,6 @@ type RunnerState = {
 };
 
 const states = new WeakMap<TurnContext, RunnerState>();
-const timeAnchor = /\b(?:latest|current|today|yesterday|last\s+(?:month|week|year))\b|\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?\b|\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i;
-const analysisQuestion = /\b(?:affect|impact|drive|influence|outlook|implication|why|how\s+(?:would|might|does|do|will|should|could))\b/i;
-
-export const isAnalysisQuestion = (userMessage: string): boolean => analysisQuestion.test(userMessage);
-export const requiresClarification = (userMessage: string): boolean => !timeAnchor.test(userMessage) && !isAnalysisQuestion(userMessage);
-
 export function cancelTurn(booted: BootedRuntime): void {
   booted.getTurnContext()?.requestCancel();
 }
@@ -49,9 +43,11 @@ export async function runTurn(booted: BootedRuntime, userMessage: string, option
   booted.setTurnContext(turn);
   const state = newState(options.now ?? performance.now.bind(performance), options.populateLedger ?? false);
   states.set(turn, state);
-  const outcome = await execute(booted, turn, userMessage, state, true);
-  booted.setTurnContext(undefined);
-  return outcome;
+  try {
+    return await execute(booted, turn, userMessage, state, true);
+  } finally {
+    booted.setTurnContext(undefined);
+  }
 }
 
 export async function resumeTurn(booted: BootedRuntime, outcome: TurnOutcome, continueSession?: () => Promise<void>): Promise<TurnOutcome> {
@@ -65,12 +61,18 @@ export async function resumeTurn(booted: BootedRuntime, outcome: TurnOutcome, co
 
 async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: string, state: RunnerState, fresh: boolean, continueSession?: () => Promise<void>): Promise<TurnOutcome> {
   if (fresh) state.reducer.transition({ type: "turn.started" });
+  const session = sessionOf(booted.session);
+  let abortIssued = false;
   booted.setTurnPolicies({
     preToolCall: (toolName, args, active) => beforeTool(state, toolName, args, active),
-    onResult: (toolName, result, active) => afterTool(state, toolName, result, active),
+    onResult: (toolName, result, active) => {
+      afterTool(state, toolName, result, active);
+      if (!abortIssued && state.artifact !== undefined) {
+        abortIssued = true;
+        void session.abort().catch(() => undefined);
+      }
+    },
   });
-  if (fresh && requiresClarification(userMessage)) return finish(state, turn, true);
-  const session = sessionOf(booted.session);
   let rejectText = false;
   const unsubscribe = session.subscribe((event) => {
     if (state.reducer.state() === "failed" || state.reducer.state() === "completed" || state.reducer.state() === "cancelled") return;
@@ -82,6 +84,7 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
         if (typeof event["toolName"] === "string") state.reducer.transition({ type: "tool.completed", tool: event["toolName"], ok: toolResultOk(event["result"]) });
         return;
       case "message_update": {
+        if (state.artifact !== undefined) return;
         const chunk = textChunk(event);
         if (chunk === undefined) return;
         try { state.buffer.append(chunk); } catch (error) { if (error instanceof NumericGuardViolation) rejectText = true; else throw error; }
@@ -92,9 +95,14 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     }
   });
   try {
-    if (turn.isCancelled()) await session.abort?.();
-    else if (continueSession === undefined) await session.prompt(userMessage);
-    else await continueSession();
+    if (turn.isCancelled()) await session.abort();
+    else await runBeforeDeadline(session, turn, continueSession === undefined ? () => session.prompt(userMessage) : continueSession);
+  } catch (error) {
+    if (error instanceof TurnDeadlineExceeded) {
+      state.reducer.transition({ type: "turn.failed" });
+      return outcome(state, turn, "failed");
+    }
+    throw error;
   } finally {
     if (typeof unsubscribe === "function") unsubscribe();
   }
@@ -103,6 +111,11 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     return outcome(state, turn, "cancelled");
   }
   if (state.awaitingApproval) return outcome(state, turn, "awaiting_approval");
+  if (state.artifact !== undefined) {
+    state.reducer.transition({ type: "artifact.final" });
+    state.reducer.transition({ type: "turn.completed", terminal_state: "completed" });
+    return outcome(state, turn, "completed");
+  }
   if (rejectText || state.buffer.guardRejected) {
     state.reducer.transition({ type: "turn.failed" });
     return outcome(state, turn, "failed");
@@ -119,6 +132,7 @@ function newState(now: () => number, populateLedger: boolean): RunnerState {
 }
 
 function beforeTool(state: RunnerState, toolName: string, args: unknown, _turn: TurnContext): ToolResult | undefined {
+  if (state.artifact !== undefined) return failure("BRIEF_FINALIZED", "market brief is already finalized");
   if (toolName === "finalize_market_brief" && state.requeryRequired) return failure("REQUERY_REQUIRED", "re-query canonical market data before finalizing");
   if (toolName !== "get_refresh_status" || !isRecord(args)) return undefined;
   const jobRef = args["job_ref"];
@@ -201,18 +215,29 @@ function updateRefreshState(state: RunnerState, data: Readonly<Record<string, un
   if (interval !== undefined) state.pollNotBefore.set(jobRef, state.now() + interval);
 }
 
-function finish(state: RunnerState, turn: TurnContext, clarification: boolean): TurnOutcome {
-  state.artifact = { kind: "clarification", prompt: "Please specify the date or period you want to discuss." };
-  state.reducer.transition({ type: "artifact.final" });
-  state.reducer.transition({ type: "turn.completed", terminal_state: "completed" });
-  return { turn, terminal_state: "completed", artifact: state.artifact, events: state.reducer.events(), ...(clarification ? { clarification_requested: true } : {}) };
-}
-
 function outcome(state: RunnerState, turn: TurnContext, terminal_state: TurnOutcome["terminal_state"]): TurnOutcome {
   return { turn, terminal_state, events: state.reducer.events(), ...(state.artifact === undefined ? {} : { artifact: state.artifact }) };
 }
 
-function sessionOf(value: unknown): Session { if (!isRecord(value) || typeof value["subscribe"] !== "function" || typeof value["prompt"] !== "function") throw new TypeError("booted session lacks the Pi session surface"); return value as Session; }
+async function runBeforeDeadline(session: Session, turn: TurnContext, runPrompt: () => Promise<void>): Promise<void> {
+  const prompt = runPrompt();
+  const remaining = turn.getDeadlineRemainingMs();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const winner = await Promise.race([
+      prompt.then(() => "prompt" as const),
+      new Promise<"deadline">((resolve) => { timeout = setTimeout(() => resolve("deadline"), remaining); }),
+    ]);
+    if (winner === "prompt") return;
+    await session.abort();
+    await prompt.catch(() => undefined);
+    throw new TurnDeadlineExceeded();
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+function sessionOf(value: unknown): Session { if (!isRecord(value) || typeof value["subscribe"] !== "function" || typeof value["prompt"] !== "function" || typeof value["abort"] !== "function") throw new TypeError("booted session lacks the Pi session surface"); return value as Session; }
 function textChunk(event: SessionEvent): string | undefined { const update = event["assistantMessageEvent"]; return isRecord(update) && update["type"] === "text_delta" && typeof update["delta"] === "string" ? update["delta"] : undefined; }
 function toolResultOk(value: unknown): boolean { return isRecord(value) && value["details"] !== undefined ? toolResultOk(value["details"]) : !isRecord(value) || value["status"] !== "error"; }
 function recordArray(value: unknown): readonly Readonly<Record<string, unknown>>[] { return Array.isArray(value) ? value.filter(isRecord) : []; }

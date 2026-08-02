@@ -18,6 +18,9 @@ import type { TurnContext, SessionContext } from "./runtime.ts";
 import { createSessionTools, type SessionToolDependencies } from "./tools.ts";
 
 const MAX_SKILL_BYTES = 64 * 1024;
+const DEPLOYMENT_MODEL = "glm/GLM-5.2";
+const DEPLOYMENT_PROVIDER = "glm";
+const DEPLOYMENT_MODEL_ID = "GLM-5.2";
 const activeToolNames = [
   "describe_market_data",
   "query_market_data",
@@ -98,7 +101,7 @@ export async function bootRuntime(ctx: SessionContext, options: BootOptions = {}
   assertResourceLockdown(resourceLoader);
 
   // why: task 9 injects a faux models collection while retaining the real Pi session path.
-  const models = options.modelsOverride ?? await ModelRuntime.create({ modelsPath: null });
+  const models = options.modelsOverride ?? await createDeploymentModels(configuredModel);
   const selectedModel = resolveModel(models, provider, modelId);
   if (models instanceof ModelRuntime && !models.hasConfiguredAuth(provider)) {
     throw new BootError("PI_MODEL is unauthorized");
@@ -142,6 +145,29 @@ export async function bootRuntime(ctx: SessionContext, options: BootOptions = {}
     session: created.session, tools, ctx, launcher, finalizeBrief, getTurnContext, setTurnContext,
     setTurnPolicies: (next) => { policies = next; },
   };
+}
+
+async function createDeploymentModels(configuredModel: string): Promise<ModelRuntime> {
+  if (configuredModel !== DEPLOYMENT_MODEL) throw new BootError(`PI_MODEL must be ${DEPLOYMENT_MODEL}`);
+  const baseUrl = requiredEnv("PI_BASE_URL");
+  const apiKey = requiredEnv("PI_API_KEY");
+  const models = await ModelRuntime.create({ modelsPath: null });
+  models.registerProvider(DEPLOYMENT_PROVIDER, {
+    name: DEPLOYMENT_PROVIDER,
+    baseUrl,
+    apiKey,
+    api: "openai-completions",
+    models: [{
+      id: DEPLOYMENT_MODEL_ID,
+      name: DEPLOYMENT_MODEL_ID,
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200_000,
+      maxTokens: 65_536,
+    }],
+  });
+  return models;
 }
 
 export function verifySkills(
@@ -189,7 +215,7 @@ export function assertExactTools(tools: readonly { readonly name: string }[], se
 
 type VerifiedSkill = { readonly path: string; readonly content: string };
 
-function requiredEnv(name: "PI_MODEL" | "CRE_DATA_DIR"): string {
+function requiredEnv(name: "PI_MODEL" | "PI_BASE_URL" | "PI_API_KEY" | "CRE_DATA_DIR"): string {
   const value = process.env[name];
   if (value === undefined || value.trim() === "") throw new BootError(`${name} required`);
   return value;

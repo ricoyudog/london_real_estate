@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { FacadeLauncher, type ToolResult } from "../src/facade-launcher.ts";
+import { DraftRejected } from "../src/finalizer.ts";
 import { TurnContext, defaultTurnLimits, type SessionContext } from "../src/runtime.ts";
 import { createSessionTools, modelVisibleBytes } from "../src/tools.ts";
 import Schema from "typebox/schema";
@@ -31,14 +32,16 @@ type Invocation = { readonly toolName: string; readonly request: unknown };
 
 class SpyLauncher extends FacadeLauncher {
   readonly calls: Invocation[] = [];
+  readonly #result: ToolResult;
 
-  constructor() {
+  constructor(result: ToolResult = okResult) {
     super({ creDataDir: mkdtempSync(join(tmpdir(), "tools-test-")) });
+    this.#result = result;
   }
 
   override async invoke(toolName: string, request: unknown): Promise<ToolResult> {
     this.calls.push({ toolName, request });
-    return okResult;
+    return this.#result;
   }
 }
 
@@ -142,6 +145,52 @@ test("adapters strip fields outside their selector contract", async () => {
   assert.equal("injected" in request.arguments, false);
 });
 
+test("facade adapters expose compact aliases and resolve them only in the host", async () => {
+  // Given: a canonical query result with host-only opaque handles.
+  const opaqueCitation = "h1.opaque-citation-handle";
+  const opaqueCursor = "h1.opaque-cursor-handle";
+  const typedResult: ToolResult = {
+    ...okResult,
+    data: { records: [{ citation_refs: [opaqueCitation] }], cursor_ref: opaqueCursor },
+  };
+  const launcher = new SpyLauncher(typedResult);
+  let finalized: unknown;
+  const ctx = session("scope_a");
+  const tools = createSessionTools({
+    ctx,
+    launcher,
+    finalizeBrief: async (draft) => { finalized = draft; return {}; },
+    getTurnContext: () => new TurnContext(ctx, defaultTurnLimits),
+  });
+
+  // When: the model queries, resolves the short citation alias, then finalizes with it.
+  const result = await invoke(toolNamed(tools, "query_market_data"), "call_visible", {
+    capability_id: "uk.bank-rate-current",
+    query_kind: "metrics",
+  });
+  await invoke(toolNamed(tools, "get_citation_metadata"), "call_citation", { citation_refs: ["citation_1"] });
+  await invoke(toolNamed(tools, "finalize_market_brief"), "call_final", {
+    title: "Brief",
+    status: "complete",
+    facts: [{ claim_id: "rate", kind: "numeric", confidence: "high", numeric_citation_ref: "citation_1" }],
+    inferences: [],
+    limitations: [],
+  });
+
+  // Then: the model never receives opaque handles, while the trusted calls receive the originals.
+  assert.equal(toolText(result), JSON.stringify({ status: "ok", data: { records: [{ citation_refs: ["citation_1"] }], cursor_ref: "cursor_1" } }));
+  const citationRequest = launcher.calls[1]?.request;
+  assert.ok(isFacadeRequest(citationRequest));
+  assert.deepEqual(citationRequest.arguments, { citation_refs: [opaqueCitation] });
+  assert.deepEqual(finalized, {
+    title: "Brief",
+    status: "complete",
+    facts: [{ claim_id: "rate", kind: "numeric", confidence: "high", numeric_citation_ref: opaqueCitation }],
+    inferences: [],
+    limitations: [],
+  });
+});
+
 test("finalize routes only to its injected finalizer", async () => {
   // Given: a finalizer dependency and a launcher spy.
   const launcher = new SpyLauncher();
@@ -169,6 +218,30 @@ test("finalize routes only to its injected finalizer", async () => {
   // Then: it invokes the finalizer and never invokes the facade launcher.
   assert.equal(calls, 1);
   assert.equal(launcher.calls.length, 0);
+});
+
+test("finalize exposes safe recovery guidance for a rejected unavailable draft", async () => {
+  // Given: the host rejects a draft that claimed a fact without a resolved citation.
+  const ctx = session("scope_a");
+  const tools = createSessionTools({
+    ctx,
+    launcher: new SpyLauncher(),
+    finalizeBrief: async () => { throw new DraftRejected("UNRESOLVED_REF"); },
+    getTurnContext: () => new TurnContext(ctx, defaultTurnLimits),
+  });
+
+  // When: the model's finalizer call is rejected by the host boundary.
+  const result = await invoke(toolNamed(tools, "finalize_market_brief"), "call_rejected", {
+    title: "Unavailable",
+    status: "unavailable",
+    facts: [],
+    inferences: [],
+    limitations: ["Coverage is unavailable."],
+  });
+
+  // Then: it receives a bounded correction instead of a thrown tool exception.
+  assert.equal(toolDetails(result).error?.code, "FINALIZE_REJECTED");
+  assert.match(toolText(result), /empty facts and inferences/);
 });
 
 test("factory exposes exactly the six sequential model tools", () => {
@@ -230,6 +303,15 @@ test("budget rejection returns a typed result before launcher invocation", async
 function toolDetails(result: unknown): ToolResult {
   assert.ok(isToolExecutionResult(result));
   return result.details;
+}
+
+function toolText(result: unknown): string {
+  assert.ok(typeof result === "object" && result !== null && "content" in result);
+  const content = result.content;
+  assert.ok(Array.isArray(content) && content.length === 1);
+  const item = content[0];
+  assert.ok(typeof item === "object" && item !== null && "text" in item && typeof item.text === "string");
+  return item.text;
 }
 
 function isToolExecutionResult(value: unknown): value is { readonly details: ToolResult } {

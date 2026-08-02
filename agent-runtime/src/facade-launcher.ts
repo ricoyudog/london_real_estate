@@ -287,7 +287,7 @@ async function terminateGroup(child: ChildProcess, kill: typeof process.kill): P
   try { kill(-pid, "SIGKILL"); } catch (error) { if (!isMissingProcess(error)) throw new CleanupError("process group SIGKILL failed", { cause: error }); }
   const killDeadline = performance.now() + 1_000;
   while (performance.now() < killDeadline) {
-    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw new CleanupError("process group liveness probe failed", { cause: error }); }
+    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; if (!isPermissionDenied(error)) throw new CleanupError("process group liveness probe failed", { cause: error }); }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
   }
   try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw new CleanupError("process group liveness probe failed", { cause: error }); }
@@ -352,3 +352,4 @@ function failure(requestId: string | null, code: string): ToolResult {
   return { schema_version: "agent_tool_result.v1", request_id: requestId, status: "error", data: null, warnings: [], error: { code, message: selected[0], retryable: selected[1] } };
 }
 function isMissingProcess(error: unknown): boolean { return error instanceof Error && "code" in error && error.code === "ESRCH"; }
+function isPermissionDenied(error: unknown): boolean { return error instanceof Error && "code" in error && error.code === "EPERM"; }

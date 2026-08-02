@@ -1,0 +1,23 @@
+services:
+  market-desk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      CRE_DATA_DIR: /data
+      HOST: 0.0.0.0
+      PORT: "8787"
+      PI_MODEL: "${PI_MODEL:?PI_MODEL must be set in the deployment environment}"
+      PI_BASE_URL: "${PI_BASE_URL:?PI_BASE_URL must be set in the deployment environment}"
+      PI_API_KEY: "${PI_API_KEY:?PI_API_KEY must be set in the deployment environment}"
+    volumes:
+      - "${CRE_DATA_VOLUME:-cre-data}:/data"
+    restart: unless-stopped
+
+# This persistent volume may be empty initially: startup migration creates only
+# its schema. Seed canonical data on a supported macOS ingestion host; Linux
+# Docker must not run `cre daemon` because sandbox-exec is unavailable.
+volumes:
+  cre-data:

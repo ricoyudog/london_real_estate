@@ -3,9 +3,11 @@ import * as http from "node:http";
 
 import type { ApprovalCoordinator, ApprovalDecision } from "./approval.ts";
 import type { CancelCoordinator } from "./cancel.ts";
+import type { DashboardOverviewV1 } from "./dashboard.ts";
 import type { RecoveryStore } from "./recovery.ts";
 import type { SseHub } from "./sse.ts";
 import { SessionRegistry } from "./sessions.ts";
+import type { StaticAssets } from "./static-assets.ts";
 
 const SESSION_ID = "([^/]+)";
 const TURN_ID = "([^/]+)";
@@ -17,10 +19,19 @@ const ROUTES = [
   { method: "GET", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}/turns/${TURN_ID}$`) },
   { method: "GET", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}/events$`) },
   { method: "POST", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}/approvals/${APPROVAL_ID}$`) },
+  { method: "GET", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}/dashboard/overview$`) },
   { method: "DELETE", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}$`) },
 ] as const;
 
-type ServerOptions = { readonly sse?: SseHub; readonly recovery?: RecoveryStore; readonly cancel?: CancelCoordinator; readonly approval?: ApprovalCoordinator; readonly runTurn?: (sessionId: string, turnId: string, userMessage: string) => Promise<void> };
+type ServerOptions = {
+  readonly sse?: SseHub;
+  readonly recovery?: RecoveryStore;
+  readonly cancel?: CancelCoordinator;
+  readonly approval?: ApprovalCoordinator;
+  readonly runTurn?: (sessionId: string, turnId: string, userMessage: string) => Promise<void>;
+  readonly dashboard?: { readonly overview: (session: { readonly principal: string; readonly scope_id: string }) => Promise<DashboardOverviewV1> };
+  readonly staticAssets?: StaticAssets;
+};
 
 export function createServer(registry: SessionRegistry, options?: ServerOptions): http.Server {
   const legacyTurns = options === undefined ? new Map<string, "unknown" | "terminal">() : undefined;
@@ -35,8 +46,10 @@ export function parseSessionId(req: http.IncomingMessage): string | null {
 }
 
 function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, options: ServerOptions | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
-  const { sse, recovery, cancel } = options ?? {};
+  const { sse, recovery, cancel, staticAssets } = options ?? {};
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
+  const asset = req.method === "GET" ? staticAssets?.get(path) : undefined;
+  if (asset !== undefined) return respondAsset(res, asset);
   const route = ROUTES.find((candidate) => candidate.pattern.test(path));
   if (route === undefined) return respond(res, 404);
   const sessionId = parseSessionId(req);
@@ -60,6 +73,7 @@ function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unkn
     return;
   }
   if (route.pattern.source === ROUTES[5].pattern.source) return decideApproval(registry, options?.approval, sessionId, decodeSegment(path, 5), req, res);
+  if (route.pattern.source === ROUTES[6].pattern.source) return dashboardOverview(registry, options?.dashboard, sessionId, res);
   registry.close(sessionId);
   return respond(res, 204);
 }
@@ -209,6 +223,16 @@ function cancelLegacyTurn(turns: Map<string, "unknown" | "terminal"> | undefined
   return respond(res, 202);
 }
 
+function dashboardOverview(registry: SessionRegistry, dashboard: ServerOptions["dashboard"] | undefined, sessionId: string, res: http.ServerResponse): void {
+  if (dashboard === undefined) return respond(res, 501);
+  const session = registry.getSession(sessionId);
+  if (session === undefined) return respond(res, 410);
+  void dashboard.overview(session).then(
+    (overview) => respondJson(res, 200, overview),
+    () => respondJson(res, 503, { error: "dashboard_unavailable" }),
+  );
+}
+
 function turnKey(sessionId: string, turnId: string): string {
   return `${sessionId}:${turnId}`;
 }
@@ -231,4 +255,9 @@ function respond(res: http.ServerResponse, status: number, headers: http.Outgoin
 function respondJson(res: http.ServerResponse, status: number, body: Readonly<Record<string, unknown>>, headers: http.OutgoingHttpHeaders = {}): void {
   res.writeHead(status, { "content-type": "application/json", ...headers });
   res.end(JSON.stringify(body));
+}
+
+function respondAsset(res: http.ServerResponse, asset: { readonly content: string; readonly contentType: string }): void {
+  res.writeHead(200, { "content-type": asset.contentType, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+  res.end(asset.content);
 }

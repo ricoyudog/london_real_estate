@@ -3,13 +3,13 @@
   "files": [
     {
       "path": "skills/track-uk-macro/SKILL.md",
-      "sha256": "ca0cfdf39246682cdf4effd8042a1059f46443188d7a9d32789ae5286fdd3176",
-      "bytes": 3036
+      "sha256": "edee44052779890aed1e3bfb511bb6150910ff0262cf9bdb061ad891683fcc54",
+      "bytes": 3045
     },
     {
       "path": "skills/generate-grounded-market-brief/SKILL.md",
-      "sha256": "f8495b9f3e79bc8487b7348d6013acbfe198bf49cfb63fd835a322dcb2d7dff1",
-      "bytes": 2634
+      "sha256": "07cfe3c9dfe05aab60aaea3324e59df9b548b5dc269246addafa9e89bc59174a",
+      "bytes": 2874
     }
   ]
 }

@@ -26,16 +26,28 @@ npx tsc --noEmit
 
 ## Environment and Run
 
-Set these values before booting a session:
+Create `agent-runtime/.env` from `.env.example` and keep it owner-readable only:
 
 ```sh
-export PI_MODEL=provider/model
-export CRE_DATA_DIR=/absolute/path/to/seeded-store
+cp .env.example .env
+chmod 600 .env
 ```
 
-- `PI_MODEL=provider/model` is required and fails fast when missing, empty, malformed, unavailable, or unauthorized.
+- `PI_MODEL=glm/GLM-5.2`, `PI_BASE_URL`, and `PI_API_KEY` configure the fixed production GLM provider. The variable names remain generic even when the endpoint is hosted by another provider.
 - `CRE_DATA_DIR=<absolute path to the seeded store>` is required because the child facade launcher uses it.
-- `RUN_REAL_MODEL_SMOKE=1` opts into the smoke gate. When unset, that test skips. It never replaces the deterministic gates.
+- A deployment launcher must pass the file with Node's `--env-file=.env`; the `test:glm` command below already does so.
+
+Start the same-origin dashboard and runtime service:
+
+```sh
+npm run start
+```
+
+Open <http://127.0.0.1:8787>. The dashboard reads its Bank Rate overview from
+the typed Facade and uses authenticated `fetch` SSE for chat turns; browser
+native `EventSource` cannot attach the session bearer. See the root
+[first-use guide](../docs/first-use-and-data-pipeline.md) for the data-host and
+Docker boundaries.
 
 ## Test
 
@@ -51,6 +63,12 @@ Run the seven deterministic `fauxProvider` fixtures through the real `createAgen
 node --experimental-strip-types --test test/fixtures/*.test.ts
 ```
 
+Run the opt-in live GLM gate with the local `.env`:
+
+```sh
+npm run test:glm
+```
+
 The fixtures cover ambiguous dates, explicit historical values, fresh latest values, successful refresh, failed refresh, absent canonical coverage, and blocked TC-01 coverage. Gate evidence and manifests live under `test/.evidence/gate-{2a,2b,2c}/`.
 
 ## Production vs Test Policy
@@ -60,17 +78,21 @@ The production allowlist is Bank Rate only: `uk.bank-rate-current` with the `ban
 ## What this runtime does NOT do
 
 - Answer London office rent, vacancy, news, or transaction questions. Those coverage areas are blocked.
-- Provide a dashboard.
 - Provide production auth or tenancy.
 - Give the model filesystem, shell, or network tools. It has only the six typed tools.
 - Write canonical data. The Python data plane owns persistence.
 - Run real-model smoke by default.
 - Roll out ONSPD in production.
 
-## Known Limitation
+## Product coverage limit
 
-NF-1: the packaged Phase-1 contract catalog's locator schema admits only scalar values, but the real facade emits nested locator objects. The launcher therefore uses a loosened temporary catalog copy in fixtures and integration. This is a deferred Phase-1 fix.
+The dashboard and runtime expose Bank Rate only. London office rent, vacancy,
+news, transaction, and supply questions are finalized as explicit unavailable
+coverage until their canonical source gates are approved; the UI does not
+invent KPI cards for them.
 
 ## Scope Claim
 
-a controlled Pi session can produce a replayable, host-hydrated, citation-grounded market_brief.v1 with explicit partial coverage, sourced from canonical Bank Rate.
+a controlled Pi session and dashboard can produce a replayable,
+host-hydrated, citation-grounded `market_brief.v1` with explicit coverage
+limits, sourced from canonical Bank Rate.

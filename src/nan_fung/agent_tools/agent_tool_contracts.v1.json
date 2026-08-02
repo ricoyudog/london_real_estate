@@ -278,6 +278,27 @@
         }
       },
       "success_data_schema": {
+        "$defs": {
+          "safe_locator_value": {
+            "oneOf": [
+              {"type": "string", "minLength": 1, "maxLength": 512},
+              {"type": "number"},
+              {"type": "boolean"},
+              {"type": "null"},
+              {
+                "type": "array",
+                "maxItems": 64,
+                "items": {"$ref": "#/$defs/safe_locator_value"}
+              },
+              {
+                "type": "object",
+                "maxProperties": 64,
+                "propertyNames": {"type": "string", "minLength": 1, "maxLength": 256},
+                "additionalProperties": {"$ref": "#/$defs/safe_locator_value"}
+              }
+            ]
+          }
+        },
         "type": "object",
         "additionalProperties": false,
         "required": ["citations"],
@@ -326,22 +347,7 @@
                   "type": "object",
                   "maxProperties": 64,
                   "propertyNames": {"type": "string", "minLength": 1, "maxLength": 256},
-                  "additionalProperties": {
-                    "oneOf": [
-                      {"type": "string", "minLength": 1, "maxLength": 4096},
-                      {"type": "number"},
-                      {"type": "boolean"},
-                      {"type": "null"},
-                      {
-                        "type": "array",
-                        "maxItems": 64,
-                        "items": {
-                          "type": ["string", "number", "boolean", "null"],
-                          "maxLength": 4096
-                        }
-                      }
-                    ]
-                  }
+                  "additionalProperties": {"$ref": "#/$defs/safe_locator_value"}
                 },
                 "title": {"type": ["string", "null"], "maxLength": 4096},
                 "public_url": {"type": ["string", "null"], "maxLength": 4096},

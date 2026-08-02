@@ -25,6 +25,9 @@ node_modules/
 *.secret
 *.secrets
 
+# Canonical state and immutable evidence are host-local.
+data/
+
 # Editor / OS
 .DS_Store
 .idea/

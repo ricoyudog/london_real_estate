@@ -2,6 +2,7 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import { Type } from "typebox";
 
 import { type FacadeLauncher, type ToolResult } from "./facade-launcher.ts";
+import { DraftRejected } from "./finalizer.ts";
 import {
   BudgetExceeded,
   RefreshArgsChanged,
@@ -20,7 +21,7 @@ export type SessionToolDependencies = {
   readonly preToolCall?: (toolName: string, args: unknown, turn: TurnContext) => ToolResult | undefined;
 };
 
-type ToolErrorCode = "NO_ACTIVE_TURN" | "BUDGET_EXCEEDED" | "TURN_DEADLINE_EXCEEDED" | "TURN_CANCELLED" | "REFRESH_ARGS_CHANGED";
+type ToolErrorCode = "NO_ACTIVE_TURN" | "BUDGET_EXCEEDED" | "TURN_DEADLINE_EXCEEDED" | "TURN_CANCELLED" | "REFRESH_ARGS_CHANGED" | "FINALIZE_REJECTED";
 type HostContext = SessionContext & {
   readonly turn_id: string;
   readonly tool_call_id: string;
@@ -114,11 +115,12 @@ const finalizeParameters = Type.Object({
 }, { additionalProperties: false });
 
 export function modelVisibleBytes(result: ToolResult): number {
-  return Buffer.byteLength(JSON.stringify({ status: result.status, data: result.data }));
+  return Buffer.byteLength(modelVisibleText(result));
 }
 
 export function createSessionTools(deps: SessionToolDependencies): ToolDefinition[] {
   const turnIds = new WeakMap<TurnContext, string>();
+  const aliases = new ModelHandleAliases();
   let nextTurnId = 0;
   const turnIdFor = (turn: TurnContext): string => {
     const existing = turnIds.get(turn);
@@ -138,12 +140,13 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
         const turn = deps.getTurnContext();
         if (turn === undefined) return toolFailure("NO_ACTIVE_TURN");
         try {
-          const blocked = deps.preToolCall?.(config.name, args, turn);
-          if (blocked !== undefined) return toolResult(blocked);
-          const items = argumentItems(args);
+          const resolvedArgs = resolveFacadeAliases(config.name, args, aliases);
+          const blocked = deps.preToolCall?.(config.name, resolvedArgs, turn);
+          if (blocked !== undefined) return toolResult(blocked, aliases);
+          const items = argumentItems(resolvedArgs);
         turn.beforeToolCall(config.name, items === undefined ? {} : { items });
         const turn_id = turnIdFor(turn);
-        const argumentsValue = stripArguments(args, config.allowed);
+        const argumentsValue = stripArguments(resolvedArgs, config.allowed);
         const refresh_request_id = config.name === "request_data_refresh"
           ? turn.registerRefreshRequest(turn_id, toolCallId, argumentsValue)
           : undefined;
@@ -157,10 +160,10 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
             tool_call_id: toolCallId,
             ...(refresh_request_id === undefined ? {} : { refresh_request_id }),
           },
-        };
+          };
           const result = await deps.launcher.invoke(config.name, request);
           deps.onResult?.(config.name, result, turn);
-          return toolResult(result);
+          return toolResult(result, aliases);
       } catch (error) {
         return toolFailure(errorCode(error));
       }
@@ -183,14 +186,16 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
         const turn = deps.getTurnContext();
         if (turn === undefined) return toolFailure("NO_ACTIVE_TURN");
         try {
-          const blocked = deps.preToolCall?.("finalize_market_brief", args, turn);
-          if (blocked !== undefined) return toolResult(blocked);
+          const resolvedArgs = resolveFinalizerAliases(args, aliases);
+          const blocked = deps.preToolCall?.("finalize_market_brief", resolvedArgs, turn);
+          if (blocked !== undefined) return toolResult(blocked, aliases);
           turn.beforeToolCall("finalize_market_brief", {});
-          const result = await deps.finalizeBrief(args, turn);
+          const result = await deps.finalizeBrief(resolvedArgs, turn);
           const details: ToolResult = { schema_version: "agent_tool_result.v1", request_id: null, status: "ok", data: isRecord(result) ? result : {}, warnings: [], error: null };
           deps.onResult?.("finalize_market_brief", details, turn);
-          return toolResult(result);
+          return toolResult(details, aliases);
         } catch (error) {
+          if (error instanceof DraftRejected) return finalizeFailure(error);
           return toolFailure(errorCode(error));
         }
       },
@@ -215,20 +220,95 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function toolResult(details: unknown) {
-  return { content: [{ type: "text" as const, text: "Tool request completed." }], details };
+function toolResult(details: ToolResult, aliases?: ModelHandleAliases) {
+  return { content: [{ type: "text" as const, text: modelVisibleText(details, aliases) }], details };
 }
 
-function toolFailure(code: ToolErrorCode) {
+function modelVisibleText(result: ToolResult, aliases?: ModelHandleAliases): string {
+  return JSON.stringify({ status: result.status, data: aliases === undefined ? result.data : aliases.present(result.data) });
+}
+
+type HandleKind = "citation" | "cursor" | "job";
+
+class ModelHandleAliases {
+  readonly #aliasToHandle = new Map<string, string>();
+  readonly #handleToAlias = new Map<string, string>();
+  readonly #next = new Map<HandleKind, number>();
+
+  present(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map((item) => this.present(item));
+    if (!isRecord(value)) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, this.#presentField(key, item)]));
+  }
+
+  resolve(kind: HandleKind, value: string): string {
+    return this.#aliasToHandle.get(this.#key(kind, value)) ?? value;
+  }
+
+  #presentField(key: string, value: unknown): unknown {
+    if (key === "citation_ref" && typeof value === "string") return this.#alias("citation", value);
+    if (key === "citation_refs" && Array.isArray(value)) return value.map((item) => typeof item === "string" ? this.#alias("citation", item) : this.present(item));
+    if (key === "cursor_ref" && typeof value === "string") return this.#alias("cursor", value);
+    if (key === "job_ref" && typeof value === "string") return this.#alias("job", value);
+    return this.present(value);
+  }
+
+  #alias(kind: HandleKind, handle: string): string {
+    const handleKey = this.#key(kind, handle);
+    const existing = this.#handleToAlias.get(handleKey);
+    if (existing !== undefined) return existing;
+    const next = (this.#next.get(kind) ?? 0) + 1;
+    this.#next.set(kind, next);
+    const alias = `${kind}_${next}`;
+    this.#handleToAlias.set(handleKey, alias);
+    this.#aliasToHandle.set(this.#key(kind, alias), handle);
+    return alias;
+  }
+
+  #key(kind: HandleKind, value: string): string { return `${kind}\u0000${value}`; }
+}
+
+function resolveFacadeAliases(toolName: FacadeToolConfig["name"], args: unknown, aliases: ModelHandleAliases): unknown {
+  if (!isRecord(args)) return args;
+  switch (toolName) {
+    case "query_market_data": return replaceField(args, "cursor_ref", (value) => typeof value === "string" ? aliases.resolve("cursor", value) : value);
+    case "get_citation_metadata": return replaceField(args, "citation_refs", (value) => Array.isArray(value) ? value.map((item) => typeof item === "string" ? aliases.resolve("citation", item) : item) : value);
+    case "get_refresh_status": return replaceField(args, "job_ref", (value) => typeof value === "string" ? aliases.resolve("job", value) : value);
+    default: return args;
+  }
+}
+
+function resolveFinalizerAliases(value: unknown, aliases: ModelHandleAliases): unknown {
+  if (Array.isArray(value)) return value.map((item) => resolveFinalizerAliases(item, aliases));
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (key === "numeric_citation_ref" && typeof item === "string") return [key, aliases.resolve("citation", item)];
+    if (key === "supporting_citation_refs" && Array.isArray(item)) return [key, item.map((ref) => typeof ref === "string" ? aliases.resolve("citation", ref) : ref)];
+    return [key, resolveFinalizerAliases(item, aliases)];
+  }));
+}
+
+function replaceField(value: Readonly<Record<string, unknown>>, field: string, replace: (item: unknown) => unknown): Readonly<Record<string, unknown>> {
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === field ? replace(item) : item]));
+}
+
+function finalizeFailure(error: DraftRejected) {
+  const message = error.code === "UNRESOLVED_REF"
+    ? "For unavailable coverage, submit empty facts and inferences."
+    : "Submit a schema-valid brief using only resolved citation aliases.";
+  return toolFailure("FINALIZE_REJECTED", message);
+}
+
+function toolFailure(code: ToolErrorCode, message = "Tool request unavailable.") {
   const result: ToolResult = {
     schema_version: "agent_tool_result.v1",
     request_id: null,
     status: "error",
     data: null,
     warnings: [],
-    error: { code, message: "Tool request unavailable.", retryable: false },
+    error: { code, message, retryable: false },
   };
-  return { content: [{ type: "text" as const, text: "Tool request unavailable." }], details: result };
+  return { content: [{ type: "text" as const, text: JSON.stringify({ status: "error", error: { code, message } }) }], details: result };
 }
 
 function errorCode(error: unknown): ToolErrorCode {

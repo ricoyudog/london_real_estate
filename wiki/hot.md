@@ -12,6 +12,7 @@ pinned: true
 ## Active Changes
 - Datasource operational system merged to `main`; remaining work is
   source-governance approval and product-coverage delivery, not another ad-hoc scraper.
+- Runtime/dashboard delivery is complete: an unqualified date now reaches Pi for the latest canonical view; the browser and Docker service visibly preserve unavailable coverage rather than inventing market values.
 
 ## Recent Decisions
 - Proposed [[wiki/decisions/datasource-database-and-scheduled-ingestion|Datasource Database and Scheduled Ingestion Pipeline]]: original SQLite＋CAS data model, durable scheduling, evidence/revision/as-of semantics, source operating matrix, and acceptance specification.
@@ -22,6 +23,7 @@ pinned: true
 - Initialised git + memory structure.
 - Wired remote `origin` → `ricoyudog/london_real_estate`, pushed initial commit `1d4af7f`.
 - Confirmed Python stack: pure stdlib HTTP, uv + hatchling, pytest `live` marker convention.
+- Agent date handling: no host-side date clarification gate; unqualified questions retain the canonical `as_of` / freshness contract.
 
 ## Architecture Pulse
 - **Stable**: durable jobs, CAS evidence, isolated parsing, SQLite canonical
@@ -30,7 +32,7 @@ pinned: true
   EPC workflows have real evidence-to-canonical validation.
 - **Policy-gated**: PLD, restricted content, BNP,
   Rightmove and GLA workflows remain blocked or manual review.
-- **Evolving**: Agent Skill and Tool research, plus source-policy/product-coverage delivery.
+- **Delivered**: Pi runtime, typed Facade boundary, same-origin dashboard and Docker read service. Product coverage remains deliberately narrower than engineering workflow coverage.
 - **Legacy**: direct `SourceResult` fetchers remain compatibility adapters, not canonical ingestion.
 
 ## Recent Pitfalls
@@ -44,5 +46,5 @@ pinned: true
 - `a20738e` current official file-release support
 - `3633595` ONSPD refresh budget and second confirmation
 - `620b5c9` live ONSPD retention drill
-- Phase 2 Pi Agent Runtime complete: 2a, 2b, and 2c gates passed; `agent-runtime/`
-  Node package; 142 tests; known Phase 1 catalog NF-1.
+- 2026-08-02 runtime repair: real GLM Bank Rate E2E and Chinese unavailable TC-01 passed; citation locator contract is fixed.
+- 2026-08-02 dashboard / Docker: actual browser screenshots and seeded-container TC-01 pass; `docs/London-Market-Desk-Architecture-and-Demo-2026-08-02.pptx` delivered.

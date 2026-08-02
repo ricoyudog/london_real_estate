@@ -1,17 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertCalls, runFixture } from "./shared.ts";
+import { assertCalls, finishText, runFixture, tool, toolAfterResult } from "./shared.ts";
 
-test("ambiguous Bank Rate date requests clarification without entering Pi or the facade", async () => {
+test("time-free Bank Rate questions enter Pi instead of a host-side clarification", async () => {
   const fixture = await runFixture({
     fixture: "1",
     prompt: "What is the Bank of England base rate?",
-    responses: () => [],
+    responses: () => [
+      tool("describe_market_data", {}),
+      toolAfterResult("finalize_market_brief", () => ({
+        title: "Bank Rate coverage",
+        status: "unavailable",
+        facts: [],
+        inferences: [],
+        limitations: ["This fixture verifies that Pi receives the unanchored request."],
+      })),
+      finishText(),
+    ],
   });
 
-  assert.equal(fixture.outcome.clarification_requested, true);
-  assert.equal(fixture.launcher.calls.length, 0);
-  assert.equal(fixture.fauxCalls, 0);
-  assertCalls(fixture, []);
+  assert.equal(fixture.outcome.clarification_requested, undefined);
+  assert.ok(fixture.fauxCalls > 0);
+  assertCalls(fixture, ["describe_market_data", "finalize_market_brief"]);
 });
