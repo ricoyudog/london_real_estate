@@ -267,6 +267,7 @@ function stableEvidence(value: unknown): unknown {
     if (name === "citation_refs") return [name, Array.isArray(item) ? item.map(() => "<citation-ref>") : item];
     if (["observation_id", "evidence_id", "canonical_run_id"].includes(name)) return [name, `<${name.replaceAll("_", "-")}>`];
     if (name === "observation_ids") return [name, Array.isArray(item) ? item.map(() => "<observation-id>") : item];
+    if (["as_of", "numeric_as_of"].includes(name)) return [name, "<anchor-as-of>"];
     return [name, stableEvidence(item)];
   }));
 }

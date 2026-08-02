@@ -10,7 +10,7 @@
       "numeric_value": "5.25",
       "numeric_unit": "percent",
       "numeric_definition": "Official Bank of England Bank Rate series IUDBEDR",
-      "numeric_as_of": "2026-08-02T04:01:59.794669Z",
+      "numeric_as_of": "<anchor-as-of>",
       "numeric_source_date": "2026-07-31",
       "numeric_period_label": "2026-07-31"
     }
@@ -19,7 +19,7 @@
   "limitations": [
     "Freshness is degraded."
   ],
-  "as_of": "2026-08-02T04:01:59.794669Z",
+  "as_of": "<anchor-as-of>",
   "sources": [
     {
       "citation_ref": "<citation-ref>",
