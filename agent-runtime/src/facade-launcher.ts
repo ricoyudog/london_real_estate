@@ -9,6 +9,7 @@ import { Writable } from "node:stream";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import draft2020MetaSchema from "ajv/dist/refs/json-schema-2020-12/schema.json" with { type: "json" };
 
+// allow: SIZE_OK — the launcher is one indivisible child-process security boundary.
 export const MAX_STDIN_BYTES = 65_536;
 const MAX_STDOUT_BYTES = 262_144;
 const MAX_STDERR_BYTES = 65_536;
