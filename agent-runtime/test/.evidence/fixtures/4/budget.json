@@ -1,0 +1,18 @@
+{
+  "facade_calls": 8,
+  "records": 2,
+  "citations": 1,
+  "model_tool_bytes": 4927,
+  "limits": {
+    "facadeCallsPerTurn": 8,
+    "statusPollsPerTurn": 3,
+    "finalizeCallsPerTurn": 2,
+    "itemsPerCall": 20,
+    "cumulativeRecords": 40,
+    "cumulativeCitations": 40,
+    "cumulativeModelToolBytes": 131072,
+    "refreshWaitMs": 15000,
+    "turnDeadlineMs": 45000,
+    "renderedTokens": 4096
+  }
+}

@@ -1,0 +1,96 @@
+[
+  {
+    "name": "query_market_data",
+    "result": {
+      "data": {
+        "access_class": "open",
+        "anchor_as_of": "2026-08-02T03:59:23.558948Z",
+        "canonical": true,
+        "cursor_ref": null,
+        "query_kind": "metrics",
+        "records": [
+          {
+            "canonical_available": true,
+            "category": "interest-rates-monetary-policy",
+            "citation_refs": [
+              "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjU1ODk0OFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzI5OTk4OTgyZWNiNjRjNjU4M2YzOGQzNjI4MzdmMzdhIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl9jYmYzMGZmMzc1ZmI0NWNlYTYwMGEzMWMxNDUxNTZkMSIsImxvY2F0b3JfaGFzaCI6Ijg5MzMzNTIxZTJiOTJjNDNjYmNmYmJkYzQ0OGIwOTZlYjg0NTk2YmY2YTlkNmQ0ZWU5NWM5YmU5OTFiZGRjMWEiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic182YzIzNWI3YTRmNjU0MmU3OTQ4Nzg4N2Q2YzU3ZmUyOCJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy41NjE4ODRaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.Ed0M_9agt1ydw6GMo7KbURzeles0Mg8Wrb60XnJsJ8w"
+            ],
+            "datasource_id": "boe.bank_rate.iudbedr",
+            "definition": "Official Bank of England Bank Rate series IUDBEDR",
+            "degraded": false,
+            "evidence_ids": [
+              "ev_cbf30ff375fb45cea600a31c145156d1"
+            ],
+            "numeric": {
+              "as_of": "2026-08-02T03:59:23.558948Z",
+              "definition": "Official Bank of England Bank Rate series IUDBEDR",
+              "period_label": null,
+              "source_date": "2026-07-31",
+              "unit": "percent",
+              "value": "5.25"
+            },
+            "observation_freshness": "fresh",
+            "observation_id": "obs_6c235b7a4f6542e79487887d6c57fe28",
+            "payload": {
+              "bank_rate_percent": "5.25",
+              "date": "2026-07-31"
+            },
+            "period_label": null,
+            "record_type": "metric",
+            "retrieval_freshness": "fresh",
+            "retrieved_at": "2026-08-01T12:00:00.000000Z",
+            "source_date": "2026-07-31",
+            "unit": "percent"
+          }
+        ],
+        "total_count": 1
+      },
+      "error": null,
+      "request_id": "call_tool:1785643163430:i8i7flogquc",
+      "schema_version": "agent_tool_result.v1",
+      "status": "ok",
+      "warnings": []
+    }
+  },
+  {
+    "name": "get_citation_metadata",
+    "result": {
+      "data": {
+        "citations": [
+          {
+            "access_class": "open",
+            "citation_ref": "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjU1ODk0OFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuXzI5OTk4OTgyZWNiNjRjNjU4M2YzOGQzNjI4MzdmMzdhIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl9jYmYzMGZmMzc1ZmI0NWNlYTYwMGEzMWMxNDUxNTZkMSIsImxvY2F0b3JfaGFzaCI6Ijg5MzMzNTIxZTJiOTJjNDNjYmNmYmJkYzQ0OGIwOTZlYjg0NTk2YmY2YTlkNmQ0ZWU5NWM5YmU5OTFiZGRjMWEiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic182YzIzNWI3YTRmNjU0MmU3OTQ4Nzg4N2Q2YzU3ZmUyOCJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy41NjE4ODRaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.Ed0M_9agt1ydw6GMo7KbURzeles0Mg8Wrb60XnJsJ8w",
+            "confidence": "high",
+            "data_kind": "direct",
+            "datasource_id": "boe.bank_rate.iudbedr",
+            "evidence_id": "ev_cbf30ff375fb45cea600a31c145156d1",
+            "licence_or_attribution": "Bank of England open data terms",
+            "limitations": [
+              "Current-vintage official series"
+            ],
+            "locator": {
+              "evidence_id": "ev_cbf30ff375fb45cea600a31c145156d1",
+              "record_locator": {
+                "kind": "csv_row",
+                "row_key": "2026-07-31"
+              },
+              "role": "primary"
+            },
+            "observation_id": "obs_6c235b7a4f6542e79487887d6c57fe28",
+            "public_url": "https://www.bankofengland.co.uk/boeapps/database/offline.csv",
+            "published_at": "2026-08-01T09:00:00.000000Z",
+            "publisher": "Bank of England",
+            "retrieved_at": "2026-08-01T12:00:00.000000Z",
+            "source_updated_at": "2026-08-01T10:00:00.000000Z",
+            "title": "Bank Rate history and data"
+          }
+        ]
+      },
+      "error": null,
+      "request_id": "call_tool:1785643163584:rzubffpum4f",
+      "schema_version": "agent_tool_result.v1",
+      "status": "ok",
+      "warnings": []
+    }
+  }
+]

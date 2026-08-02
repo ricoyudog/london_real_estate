@@ -1,0 +1,14 @@
+{
+  "schema_version": "market_brief.v1",
+  "title": "Prime rent unavailable",
+  "status": "unavailable",
+  "facts": [],
+  "inferences": [],
+  "limitations": [
+    "Current launch coverage does not include London prime rent."
+  ],
+  "sources": [],
+  "lineage": {},
+  "freshness_warnings": [],
+  "display_text": "Prime rent unavailable"
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": "market_brief.v1",
+  "title": "Bank Rate brief",
+  "status": "complete",
+  "facts": [
+    {
+      "claim_id": "bank-rate",
+      "kind": "numeric",
+      "confidence": "high",
+      "numeric_value": "5.25",
+      "numeric_unit": "percent",
+      "numeric_definition": "Official Bank of England Bank Rate series IUDBEDR",
+      "numeric_as_of": "2026-08-02T03:59:23.068648Z",
+      "numeric_source_date": "2026-07-31",
+      "numeric_period_label": "2026-07-31"
+    }
+  ],
+  "inferences": [],
+  "limitations": [],
+  "as_of": "2026-08-02T03:59:23.068648Z",
+  "sources": [
+    {
+      "citation_ref": "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjA2ODY0OFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuX2I5NzllZjllZThlOTQ2ZjI5ZDBmN2M5NzJhMmYxNGFiIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl80ODYxNTUxODEwMDU0NGUxODVkMmJjY2Q1MDFlYmMzZSIsImxvY2F0b3JfaGFzaCI6ImY2MWNjOTEyNWNiNGJkZTY0YWUzNWFhMWZjYjhkMzMzYzM5NjU3MmU4MGJkZmQwMTMxYmQ3NzY4YjQ4Yzc1MTYiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic19lZTgzNmMzY2Q0Yzk0OWZjOTM4Y2I1ZmFmZjBmNzMwMyJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy4wNzI3ODVaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.W4CYpZ1Dg3CxPflrvDJmiMjmki9zpJbEfWk6KxxBieI",
+      "source": "Bank of England",
+      "published_at": "2026-08-01T09:00:00.000000Z"
+    }
+  ],
+  "lineage": {
+    "bank-rate": {
+      "observation_ids": [
+        "obs_ee836c3cd4c949fc938cb5faff0f7303"
+      ],
+      "citation_refs": [
+        "h1.eyJiIjp7fSwiZCI6eyJhbmNob3JfYXNfb2YiOiIyMDI2LTA4LTAyVDAzOjU5OjIzLjA2ODY0OFoiLCJjYW5vbmljYWxfcnVuX2lkIjoicnVuX2I5NzllZjllZThlOTQ2ZjI5ZDBmN2M5NzJhMmYxNGFiIiwiY2FwYWJpbGl0eV9pZCI6InVrLmJhbmstcmF0ZS1jdXJyZW50IiwiZXZpZGVuY2VfaWQiOiJldl80ODYxNTUxODEwMDU0NGUxODVkMmJjY2Q1MDFlYmMzZSIsImxvY2F0b3JfaGFzaCI6ImY2MWNjOTEyNWNiNGJkZTY0YWUzNWFhMWZjYjhkMzMzYzM5NjU3MmU4MGJkZmQwMTMxYmQ3NzY4YjQ4Yzc1MTYiLCJvYnNlcnZhdGlvbl9pZCI6Im9ic19lZTgzNmMzY2Q0Yzk0OWZjOTM4Y2I1ZmFmZjBmNzMwMyJ9LCJlIjoiMjAyNi0wOC0wMlQwNDoyOToyMy4wNzI3ODVaIiwiayI6ImNpdGF0aW9uIiwicCI6ImZpeHR1cmUtYWdlbnQiLCJzIjoiZml4dHVyZS1zY29wZSIsInYiOiJoMSJ9.W4CYpZ1Dg3CxPflrvDJmiMjmki9zpJbEfWk6KxxBieI"
+      ]
+    }
+  },
+  "freshness_warnings": [
+    "Canonical Bank Rate is stale; last-good value retained."
+  ],
+  "published_at": "2026-08-01T09:00:00.000000Z",
+  "publication_date_warning": false,
+  "datasource_confidence": {
+    "bank-rate": "high"
+  },
+  "fact_confidence": {
+    "bank-rate": "high"
+  },
+  "inference_confidence": {},
+  "display_text": "Bank Rate brief"
+}

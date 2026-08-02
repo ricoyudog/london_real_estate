@@ -1,0 +1,14 @@
+{
+  "schema_version": "market_brief.v1",
+  "title": "Bank Rate unavailable",
+  "status": "unavailable",
+  "facts": [],
+  "inferences": [],
+  "limitations": [
+    "Canonical Bank Rate coverage is unavailable."
+  ],
+  "sources": [],
+  "lineage": {},
+  "freshness_warnings": [],
+  "display_text": "Bank Rate unavailable"
+}

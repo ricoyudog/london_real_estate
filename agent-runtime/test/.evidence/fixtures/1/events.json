@@ -1,0 +1,12 @@
+[
+  {
+    "type": "turn.started"
+  },
+  {
+    "type": "artifact.final"
+  },
+  {
+    "type": "turn.completed",
+    "terminal_state": "completed"
+  }
+]

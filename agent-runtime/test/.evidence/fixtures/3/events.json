@@ -1,0 +1,39 @@
+[
+  {
+    "type": "turn.started"
+  },
+  {
+    "type": "tool.started",
+    "tool": "query_market_data"
+  },
+  {
+    "type": "tool.completed",
+    "tool": "query_market_data",
+    "ok": true
+  },
+  {
+    "type": "tool.started",
+    "tool": "get_citation_metadata"
+  },
+  {
+    "type": "tool.completed",
+    "tool": "get_citation_metadata",
+    "ok": true
+  },
+  {
+    "type": "tool.started",
+    "tool": "finalize_market_brief"
+  },
+  {
+    "type": "tool.completed",
+    "tool": "finalize_market_brief",
+    "ok": true
+  },
+  {
+    "type": "artifact.final"
+  },
+  {
+    "type": "turn.completed",
+    "terminal_state": "completed"
+  }
+]
