@@ -11,6 +11,10 @@ const request = JSON.parse(requestText);
 const mode = request.request_id;
 
 if (mode === "call_stdout_overflow") {
+  const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+  });
+  writeFileSync(`${process.env.CRE_DATA_DIR}/${mode}.pids`, `${process.pid}\n${grandchild.pid}\n`);
   process.stdout.write("x".repeat(262_145));
   setInterval(() => {}, 1_000);
 } else if (mode === "call_stderr_overflow") {
@@ -43,6 +47,8 @@ if (mode === "call_stdout_overflow") {
     key_absent_from_argv: !process.argv.join("\0").includes(key.toString("hex")),
     key_absent_from_env: !JSON.stringify(process.env).includes(key.toString("hex")),
     key_absent_from_stdin: !requestText.includes(key.toString("hex")),
+    key_absent_from_stdout: !JSON.stringify(ok(request.request_id)).includes(key.toString("hex")),
+    key_absent_from_stderr: true,
   }));
   process.stdout.write(JSON.stringify(ok(request.request_id)));
 }

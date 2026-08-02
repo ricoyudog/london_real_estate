@@ -88,6 +88,8 @@ test("c: FD3 is exactly 32 bytes and its key is absent from argv, env, and stdin
     key_absent_from_argv: true,
     key_absent_from_env: true,
     key_absent_from_stdin: true,
+    key_absent_from_stdout: true,
+    key_absent_from_stderr: true,
   });
 });
 
@@ -99,8 +101,10 @@ test("d: oversized stdin becomes a typed invalid-argument result", async () => {
 });
 
 test("e: stdout overflow becomes typed and kills the process group", async () => {
-  const result = await withHelper(migratedStore()).invoke("describe_market_data", request("call_stdout_overflow"));
+  const dataDir = migratedStore();
+  const result = await withHelper(dataDir).invoke("describe_market_data", request("call_stdout_overflow"));
   assert.equal(result.error?.code, "RESULT_TOO_LARGE");
+  await waitForGone(readFileSync(join(dataDir, "call_stdout_overflow.pids"), "utf8").trim().split("\n").map(Number));
 });
 
 test("f: timeout applies the bounded group cleanup", async () => {
