@@ -2,13 +2,15 @@ import { randomBytes } from "node:crypto";
 import type * as http from "node:http";
 import process from "node:process";
 
+import { ApprovalCoordinator, type PendingApproval } from "./approval.ts";
 import { bootRuntime, type BootOptions } from "./boot.ts";
 import { CancelCoordinator } from "./cancel.ts";
 import { FacadeLauncher } from "./facade-launcher.ts";
 import { finalizeBrief } from "./finalizer.ts";
 import { createServer } from "./http.ts";
 import { RecoveryStore } from "./recovery.ts";
-import type { SessionContext } from "./runtime.ts";
+import type { SessionContext, TurnContext } from "./runtime.ts";
+import type { ToolResult } from "./facade-launcher.ts";
 import { SessionRegistry } from "./sessions.ts";
 import { LifecycleReducer } from "./runtime.ts";
 import { projectLifecycle, SseHub, SseProtocolError } from "./sse.ts";
@@ -30,6 +32,7 @@ export type App = {
   readonly hub: SseHub;
   readonly recovery: RecoveryStore;
   readonly cancel: CancelCoordinator;
+  readonly approval: ApprovalCoordinator;
   readonly runTurnForSession: (sessionId: string, userMessage: string) => Promise<TurnOutcome>;
   readonly close: () => Promise<void>;
 };
@@ -39,6 +42,8 @@ export async function createApp(deps: AppDeps): Promise<App> {
   const recovery = new RecoveryStore(registry);
   const hub = new SseHub(registry, { recovery, ...(deps.now === undefined ? {} : { now: deps.now }) });
   const cancel = new CancelCoordinator({ registry, hub });
+  const launcher = deps.launcher ?? new FacadeLauncher({ creDataDir: deps.creDataDir, ...(deps.assetsDir === undefined ? {} : { assetsDir: deps.assetsDir }) });
+  const approval = new ApprovalCoordinator({ registry, launcher, hub, ...(deps.now === undefined ? {} : { now: deps.now }) });
   const started = new Set<string>();
   const bootedSessions = new Set<unknown>();
   registry.onCreated = (sessionId) => {
@@ -54,24 +59,26 @@ export async function createApp(deps: AppDeps): Promise<App> {
     const previousDataDir = process.env.CRE_DATA_DIR;
     process.env.CRE_DATA_DIR = deps.creDataDir;
     try {
-      const launcher = deps.launcher ?? new FacadeLauncher({ creDataDir: deps.creDataDir, ...(deps.assetsDir === undefined ? {} : { assetsDir: deps.assetsDir }) });
       const booted = await bootRuntime(ctx, {
         launcher, finalizeBrief: async (draft, turn) => finalizeBrief({ schema_version: "market_brief_draft.v1", ...record(draft) }, turn),
         ...(deps.modelsOverride === undefined ? {} : { modelsOverride: deps.modelsOverride }),
         ...(deps.createSession === undefined ? {} : { createSession: deps.createSession }),
       });
       bootedSessions.add(booted.session);
-      const outcome = await runTurn(booted, userMessage, {
+      const wrapped = approvalRuntime(booted, sessionId, turnId, approval, deps.now ?? (() => performance.timeOrigin + performance.now()));
+      const outcome = await runTurn(wrapped, userMessage, {
         populateLedger: true,
         ...(deps.now === undefined ? {} : { now: deps.now }),
         onTurnCreated: (turn) => {
           cancel.registerActiveTurn(sessionId, turnId, turn);
+          approval.enqueueContinuation(sessionId, turnId, wrapped, { turn });
           hub.emit(sessionId, turnId, "turn.started", {});
         },
       });
       const reducer = new LifecycleReducer();
       for (const event of outcome.events.slice(1)) {
         if (outcome.terminal_state === "cancelled" && event.type === "turn.completed") continue;
+        if (approval.isAwaiting(sessionId) && (event.type === "turn.completed" || event.type === "turn.failed")) continue;
         projectLifecycle(sessionId, turnId, hub, reducer, event, outcome.artifact);
       }
       return outcome;
@@ -80,15 +87,15 @@ export async function createApp(deps: AppDeps): Promise<App> {
       catch (terminalError) { if (!(terminalError instanceof SseProtocolError)) throw terminalError; }
       throw error;
     } finally {
-      registry.releaseTurn(sessionId);
+      if (!approval.isAwaiting(sessionId)) registry.releaseTurn(sessionId);
       restoreEnv("PI_MODEL", previousModel);
       restoreEnv("CRE_DATA_DIR", previousDataDir);
     }
   };
 
-  const server = createServer(registry, { sse: hub, recovery, cancel, runTurn: async (sessionId, turnId, message) => { await execute(sessionId, turnId, message); } });
+  const server = createServer(registry, { sse: hub, recovery, cancel, approval, runTurn: async (sessionId, turnId, message) => { await execute(sessionId, turnId, message); } });
   return {
-    server, registry, hub, recovery, cancel,
+    server, registry, hub, recovery, cancel, approval,
     runTurnForSession: async (sessionId, userMessage) => {
       const reserved = registry.reserveTurn(sessionId);
       if (!reserved.ok) throw new AppSessionError(sessionId);
@@ -99,6 +106,43 @@ export async function createApp(deps: AppDeps): Promise<App> {
       await Promise.all([...bootedSessions].map(disposeSession));
       if (server.listening) await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
     },
+  };
+}
+
+function approvalRuntime(booted: Awaited<ReturnType<typeof bootRuntime>>, sessionId: string, turnId: string, approval: ApprovalCoordinator, now: () => number): Awaited<ReturnType<typeof bootRuntime>> {
+  return {
+    ...booted,
+    setTurnPolicies: (policies) => booted.setTurnPolicies({
+      ...(policies.preToolCall === undefined ? {} : { preToolCall: policies.preToolCall }),
+      onResult: (toolName, result, turn) => {
+        policies.onResult?.(toolName, result, turn);
+        const pending = pendingApproval(toolName, result, turn, sessionId, now());
+        if (pending !== undefined) approval.registerRequired(pending);
+      },
+    }),
+  };
+}
+
+function pendingApproval(toolName: string, result: ToolResult, turn: TurnContext, sessionId: string, issuedAt: number): PendingApproval | undefined {
+  if (toolName !== "request_data_refresh" || result.status !== "ok" || result.data?.["disposition"] !== "approval_required") return undefined;
+  if (!turn.session.allowed_capability_ids.includes("uk.postcode-resolution") || !turn.session.allowed_refresh_profiles.includes("onspd-postcode")) return undefined;
+  const approvalId = result.data["approval_id"];
+  const expiresAt = result.data["approval_expires_at"];
+  const refresh = [...turn.refreshIds.values()].at(-1);
+  if (typeof approvalId !== "string" || typeof expiresAt !== "string" || refresh === undefined) return undefined;
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) return undefined;
+  return {
+    approval_id: approvalId,
+    session_id: sessionId,
+    principal: turn.session.principal,
+    capability_scope_id: turn.session.capability_scope_id,
+    refresh_request_id: refresh.refresh_request_id,
+    fingerprint: refresh.fingerprint,
+    policy_version: "test-online-v1",
+    issued_at_ms: issuedAt,
+    expires_at_ms: expiresAtMs,
+    decision: null,
   };
 }
 

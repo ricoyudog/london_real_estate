@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import * as http from "node:http";
 
+import type { ApprovalCoordinator, ApprovalDecision } from "./approval.ts";
 import type { CancelCoordinator } from "./cancel.ts";
 import type { RecoveryStore } from "./recovery.ts";
 import type { SseHub } from "./sse.ts";
@@ -19,7 +20,7 @@ const ROUTES = [
   { method: "DELETE", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}$`) },
 ] as const;
 
-type ServerOptions = { readonly sse?: SseHub; readonly recovery?: RecoveryStore; readonly cancel?: CancelCoordinator; readonly runTurn?: (sessionId: string, turnId: string, userMessage: string) => Promise<void> };
+type ServerOptions = { readonly sse?: SseHub; readonly recovery?: RecoveryStore; readonly cancel?: CancelCoordinator; readonly approval?: ApprovalCoordinator; readonly runTurn?: (sessionId: string, turnId: string, userMessage: string) => Promise<void> };
 
 export function createServer(registry: SessionRegistry, options?: ServerOptions): http.Server {
   const legacyTurns = options === undefined ? new Map<string, "unknown" | "terminal">() : undefined;
@@ -58,7 +59,7 @@ function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unkn
     if (!attached.ok) return respond(res, 410);
     return;
   }
-  if (route.pattern.source === ROUTES[5].pattern.source) return respondJson(res, 501, { error: "NOT_IMPLEMENTED" });
+  if (route.pattern.source === ROUTES[5].pattern.source) return decideApproval(registry, options?.approval, sessionId, decodeSegment(path, 5), req, res);
   registry.close(sessionId);
   return respond(res, 204);
 }
@@ -124,6 +125,53 @@ async function readMessage(req: http.IncomingMessage): Promise<string | null> {
   } catch (error) {
     if (error instanceof SyntaxError) return null;
     throw error;
+  }
+}
+
+function decideApproval(registry: SessionRegistry, approval: ApprovalCoordinator | undefined, sessionId: string, approvalId: string, req: http.IncomingMessage, res: http.ServerResponse): void {
+  if (approval === undefined) return respondJson(res, 501, { error: "NOT_IMPLEMENTED" });
+  const session = registry.getSession(sessionId);
+  if (session === undefined) return respond(res, 410);
+  void readDecision(req).then(async (decision) => {
+    if (decision === null) return respondJson(res, 400, { error: "invalid_decision" });
+    const result = await approval.decide(sessionId, approvalId, decision, session.principal, session.scope_id);
+    respondApproval(res, result, decision);
+  });
+}
+
+async function readDecision(req: http.IncomingMessage): Promise<"approve" | "deny" | null> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > 65_536) return null;
+    chunks.push(buffer);
+  }
+  try {
+    const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (typeof value !== "object" || value === null || Array.isArray(value) || Object.keys(value).length !== 1 || !("decision" in value)) return null;
+    return value.decision === "approve" || value.decision === "deny" ? value.decision : null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
+function respondApproval(res: http.ServerResponse, result: ApprovalDecision, decision: "approve" | "deny"): void {
+  if (result.ok) return respondJson(res, 200, { outcome: result.outcome });
+  switch (result.reason) {
+    case "UNKNOWN":
+      return respond(res, 404);
+    case "EXPIRED":
+      return respondJson(res, 410, { error: "approval_expired" });
+    case "REPLAY_OPPOSITE":
+      return respondJson(res, 409, { error: "approval_already_resolved", decision });
+    case "SCOPE_MISMATCH":
+    case "PRINCIPAL_MISMATCH":
+    case "FINGERPRINT_MISMATCH":
+    case "POLICY_VERSION_MISMATCH":
+      return respond(res, 403);
   }
 }
 
