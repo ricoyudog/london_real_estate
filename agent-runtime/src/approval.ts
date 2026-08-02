@@ -1,3 +1,4 @@
+// allow: SIZE_OK - approval state, coordination, and dispatch stay together as one lifecycle boundary.
 import { randomBytes } from "node:crypto";
 
 import type { FacadeLauncher, ToolResult } from "./facade-launcher.ts";

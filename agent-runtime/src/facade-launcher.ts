@@ -60,6 +60,10 @@ export class LauncherConfigError extends Error {
   readonly name = "LauncherConfigError";
 }
 
+export class CleanupError extends Error {
+  readonly name = "CleanupError";
+}
+
 class ProtocolBoundaryError extends Error {
   readonly name = "ProtocolBoundaryError";
   readonly code: "PROTOCOL_ERROR" | "RESULT_TOO_LARGE" | "TIMEOUT";
@@ -199,8 +203,8 @@ export class FacadeLauncher {
     cancelEvent?.removeEventListener("abort", cancel);
     cleanup ??= terminateGroup(child, this.#kill).catch((failure) => { cleanupError = failure; });
     await cleanup;
+    if (cleanupError !== undefined) throw new ProtocolBoundaryError("PROTOCOL_ERROR");
     if (boundaryError !== undefined) throw boundaryError;
-    if (cleanupError !== undefined) throw cleanupError;
     if (exitCode === null) throw new ProtocolBoundaryError("PROTOCOL_ERROR");
     return {
       exitCode,
@@ -250,18 +254,20 @@ function compileContracts(ajv: Ajv2020, catalog: unknown): ReadonlyMap<string, C
 async function terminateGroup(child: ChildProcess, kill: typeof process.kill): Promise<void> {
   const pid = child.pid;
   if (pid === undefined) return;
-  try { kill(-pid, "SIGTERM"); } catch (error) { if (!isMissingProcess(error)) throw error; return; }
+  try { kill(-pid, "SIGTERM"); } catch (error) { if (!isMissingProcess(error)) throw new CleanupError("process group SIGTERM failed", { cause: error }); return; }
   const deadline = performance.now() + 1_000;
   while (performance.now() < deadline) {
-    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
+    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw new CleanupError("process group liveness probe failed", { cause: error }); }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
   }
-  try { kill(-pid, "SIGKILL"); } catch (error) { if (!isMissingProcess(error)) throw error; }
+  try { kill(-pid, "SIGKILL"); } catch (error) { if (!isMissingProcess(error)) throw new CleanupError("process group SIGKILL failed", { cause: error }); }
   const killDeadline = performance.now() + 1_000;
   while (performance.now() < killDeadline) {
-    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
+    try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw new CleanupError("process group liveness probe failed", { cause: error }); }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
   }
+  try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw new CleanupError("process group liveness probe failed", { cause: error }); }
+  throw new CleanupError("process group survived SIGKILL deadline");
 }
 
 function readJson(path: string): JsonObject { return readJsonText(readFileSync(path, "utf8")); }

@@ -13,6 +13,7 @@ import { ApprovalCoordinator, type PendingApproval } from "../src/approval.ts";
 import { createApp } from "../src/app.ts";
 import { FacadeLauncher, type ToolResult } from "../src/facade-launcher.ts";
 import { createServer } from "../src/http.ts";
+import { RecoveryStore } from "../src/recovery.ts";
 import { TurnContext, defaultTurnLimits, type SessionContext } from "../src/runtime.ts";
 import { SessionRegistry } from "../src/sessions.ts";
 import { SseHub } from "../src/sse.ts";
@@ -37,6 +38,23 @@ test("(a) approve while streaming queues one follow-up on the same logical turn"
   assert.equal(fixture.hub.events(fixture.sessionId).filter(terminal).length, 1);
   assert.equal(fixture.hub.events(fixture.sessionId).some((event) => event.type === "artifact.final"), true);
   assert.equal(fixture.hub.events(fixture.sessionId).find((event) => event.type === "artifact.final")?.payload["artifact"], fixture.artifact);
+  const recovered = fixture.recovery.recover(fixture.sessionId, "turn-ons");
+  assert.equal(recovered.ok, true);
+  if (recovered.ok) assert.deepEqual(recovered.turn.artifact, { artifact: fixture.artifact });
+});
+
+test("approved continuation emits one failed terminal when resume throws", async () => {
+  // Given: an approved continuation whose runner rejects
+  const fixture = setup(false);
+  fixture.failResume();
+
+  // When: approval dispatch resumes the logical turn
+  await fixture.coordinator.decide(fixture.sessionId, fixture.approval.approval_id, "approve", context.principal, context.capability_scope_id);
+
+  // Then: the turn fails once, releases its reservation, and publishes no artifact
+  assert.deepEqual(fixture.hub.events(fixture.sessionId).filter(terminal).map((event) => event.type), ["turn.failed"]);
+  assert.equal(fixture.registry.reserveTurn(fixture.sessionId).ok, true);
+  assert.equal(fixture.hub.events(fixture.sessionId).some((event) => event.type === "artifact.final"), false);
 });
 
 test("(b) approve while idle triggers one continuation on the same logical turn", async () => {
@@ -251,7 +269,8 @@ function setup(streaming: boolean, launchGate?: Promise<void>, override: Partial
   assert.equal("error" in created, false);
   if ("error" in created) throw new Error("session creation failed");
   assert.deepEqual(registry.reserveTurn(created.handle.id), { ok: true });
-  const hub = new SseHub(registry, { now: () => clock.now });
+  const recovery = new RecoveryStore(registry);
+  const hub = new SseHub(registry, { now: () => clock.now, recovery });
   const launcher = new FakeLauncher(launchGate);
   const session = new FakeSession(streaming);
   const turn = new TurnContext(context, defaultTurnLimits, { now: () => clock.now, idFactory: () => "approval-refresh" });
@@ -267,9 +286,11 @@ function setup(streaming: boolean, launchGate?: Promise<void>, override: Partial
   };
   const artifact = { schema_version: "market_brief.v1", title: "Resumed brief" };
   let resumedTurn: TurnContext | undefined;
+  let resumeFails = false;
   const coordinator = new ApprovalCoordinator({
     registry, launcher, hub, now: () => clock.now,
     resume: async (_booted, outcome, continueSession) => {
+      if (resumeFails) throw new Error("resume failed");
       await continueSession?.();
       resumedTurn = outcome.turn;
       return { turn: outcome.turn, terminal_state: "completed", artifact, events: [...outcome.events, { type: "tool.started", tool: "finalize_market_brief" }, { type: "tool.completed", tool: "finalize_market_brief", ok: true }, { type: "artifact.final" }, { type: "turn.completed", terminal_state: "completed" }] };
@@ -282,8 +303,9 @@ function setup(streaming: boolean, launchGate?: Promise<void>, override: Partial
   if (register) assert.deepEqual(coordinator.registerRequired(approval), { ok: true });
   const ledger = turn.getLedger();
   return {
-    registry, coordinator, hub, launcher, session, turn, approval, clock, bearer: created.bearer, artifact,
+    registry, coordinator, hub, recovery, launcher, session, turn, approval, clock, bearer: created.bearer, artifact,
     sessionId: created.handle.id, messages: session.messages,
+    failResume: () => { resumeFails = true; },
     get resumedTurn() { return resumedTurn; },
     identity: () => ({ turn, scope: turn.session.capability_scope_id, ledger, deadline: turn.deadline, refreshIds: turn.refreshIds }),
   };

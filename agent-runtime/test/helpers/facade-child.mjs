@@ -16,6 +16,7 @@ if (mode === "call_stdout_overflow") {
   });
   writeFileSync(`${process.env.CRE_DATA_DIR}/${mode}.pids`, `${process.pid}\n${grandchild.pid}\n`);
   process.stdout.write("x".repeat(262_145));
+  process.on("SIGTERM", () => {});
   setInterval(() => {}, 1_000);
 } else if (mode === "call_stderr_overflow") {
   process.stderr.write("x".repeat(65_537));

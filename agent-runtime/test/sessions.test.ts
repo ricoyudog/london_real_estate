@@ -23,6 +23,7 @@ function created(registryToUse: SessionRegistry): NewSession {
 
 test("a: create returns a one-time bearer and hash-only handle", () => {
   const logged: string[] = [];
+  // test-only logging for assertion capture
   const originalLog = console.log;
   console.log = (...values: unknown[]) => logged.push(values.map(String).join(" "));
   let createdSession: NewSession;

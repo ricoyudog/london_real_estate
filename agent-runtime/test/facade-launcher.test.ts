@@ -212,3 +212,42 @@ test("n: EPERM during process-group cleanup becomes a typed protocol failure", a
   assert.equal(result.status, "error");
   assert.equal(result.error?.code, "PROTOCOL_ERROR");
 });
+
+test("o: cancellation cleanup failure takes precedence over timeout", async () => {
+  // Given: a running process group whose injected containment kill is denied
+  const dataDir = migratedStore();
+  const controller = new AbortController();
+  const deniedKill: typeof process.kill = (_pid, _signal) => {
+    const error = new Error("operation not permitted");
+    Object.assign(error, { code: "EPERM" });
+    throw error;
+  };
+  const invocation = withHelper(dataDir, deniedKill).invoke("describe_market_data", request("call_cancel"), { cancelEvent: controller.signal });
+  const pids = await waitForPidFile(join(dataDir, "call_cancel.pids"));
+  const groupLeader = pids[0];
+  assert.ok(groupLeader !== undefined);
+
+  // When: cancellation and failed cleanup happen together
+  controller.abort();
+  process.kill(-groupLeader, "SIGKILL");
+  const result = await invocation;
+
+  // Then: the more severe cleanup failure is not masked as a timeout
+  assert.equal(result.status, "error");
+  assert.equal(result.error?.code, "PROTOCOL_ERROR");
+});
+
+test("p: process group observable after the SIGKILL deadline is a typed cleanup failure", async () => {
+  // Given: signals reach the real group but liveness probes keep observing it
+  const persistentKill: typeof process.kill = (pid, signal) => {
+    if (signal === 0) return true;
+    return process.kill(pid, signal);
+  };
+
+  // When: cleanup exhausts both termination deadlines
+  const result = await withHelper(migratedStore(), persistentKill).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 0.01 });
+
+  // Then: persistent descendants are surfaced as a protocol failure
+  assert.equal(result.status, "error");
+  assert.equal(result.error?.code, "PROTOCOL_ERROR");
+});

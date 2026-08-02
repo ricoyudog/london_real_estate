@@ -113,6 +113,7 @@ test("published_at null and distinct confidence survive live, replay, and recove
 
 async function setup(name: string, publishedNull: boolean, firstResponseGate?: Promise<void>) {
   const logs: string[] = [];
+  // test-only logging for assertion capture
   const originalLog = console.log;
   const originalWarn = console.warn;
   const originalError = console.error;
