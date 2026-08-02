@@ -1,0 +1,29 @@
+{
+  "reject": [
+    { "category": "ascii digit", "text": "The rate is 5" },
+    { "category": "decimal", "text": "The rate is 4.5" },
+    { "category": "arabic indic", "text": "The rate is ٤٥٠" },
+    { "category": "full width", "text": "The rate is ５" },
+    { "category": "superscript", "text": "The rate is ²" },
+    { "category": "ascii percent", "text": "The rate is %" },
+    { "category": "full width percent", "text": "The rate is ％" },
+    { "category": "arabic percent", "text": "The rate is ٪" },
+    { "category": "currency symbols", "text": "£ $ € ¥ ￥ ₹" },
+    { "category": "currency codes", "text": "GBP and USD" },
+    { "category": "english cardinal", "text": "five" },
+    { "category": "english ordinal", "text": "fifth" },
+    { "category": "english decimal words", "text": "four point five" },
+    { "category": "english percent words", "text": "five percent" },
+    { "category": "english hyphenated", "text": "thirty-one" },
+    { "category": "chinese numeral", "text": "五" },
+    { "category": "chinese percentage", "text": "百分之五" },
+    { "category": "chinese financial", "text": "伍佰" },
+    { "category": "nfkc full width", "text": "５" }
+  ],
+  "accept": [
+    { "category": "ordinary prose", "text": "The Bank of England publishes a market brief." },
+    { "category": "article prose", "text": "A brief overview explains market conditions." },
+    { "category": "cjk prose", "text": "利率可能影响租金" },
+    { "category": "qualitative prose", "text": "Demand remains resilient despite uncertainty." }
+  ]
+}
