@@ -212,6 +212,26 @@ export class TurnContext {
     this.#counters.renderedTokens = next.renderedTokens;
   }
 
+  chargeAccumulators(args: ToolCallArguments): void {
+    if (this.cancelEvent.isCancelled()) throw new TurnCancelled();
+    if (this.#now() >= this.deadline) throw new TurnDeadlineExceeded();
+    this.#checkItems(args.items);
+    const next = {
+      records: this.#counters.records + (args.records ?? 0),
+      citations: this.#counters.citations + (args.citations ?? 0),
+      modelToolBytes: this.#counters.modelToolBytes + (args.modelToolBytes ?? 0),
+      renderedTokens: this.#counters.renderedTokens + (args.renderedTokens ?? 0),
+    };
+    this.#checkCounter(next.records, "cumulativeRecords");
+    this.#checkCounter(next.citations, "cumulativeCitations");
+    this.#checkCounter(next.modelToolBytes, "cumulativeModelToolBytes");
+    this.#checkCounter(next.renderedTokens, "renderedTokens");
+    this.#counters.records = next.records;
+    this.#counters.citations = next.citations;
+    this.#counters.modelToolBytes = next.modelToolBytes;
+    this.#counters.renderedTokens = next.renderedTokens;
+  }
+
   registerRefreshRequest(turnId: string, toolCallId: string, args: unknown): string {
     const key = `${turnId}:${toolCallId}`;
     const fingerprint = createHash("sha256").update(canonicalJson(args)).digest("hex");

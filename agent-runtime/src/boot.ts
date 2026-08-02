@@ -15,7 +15,7 @@ import {
 
 import { FacadeLauncher, type FacadeLauncher as FacadeLauncherType } from "./facade-launcher.ts";
 import type { TurnContext, SessionContext } from "./runtime.ts";
-import { createSessionTools } from "./tools.ts";
+import { createSessionTools, type SessionToolDependencies } from "./tools.ts";
 
 const MAX_SKILL_BYTES = 64 * 1024;
 const activeToolNames = [
@@ -42,6 +42,12 @@ export type SkillManifest = {
 export interface BootedRuntime {
   readonly session: unknown;
   readonly tools: ReturnType<typeof createSessionTools>;
+  readonly ctx: SessionContext;
+  readonly launcher: FacadeLauncherType;
+  readonly finalizeBrief: (draft: unknown, turn: TurnContext) => Promise<unknown>;
+  readonly getTurnContext: () => TurnContext | undefined;
+  readonly setTurnContext: (turn: TurnContext | undefined) => void;
+  readonly setTurnPolicies: (policies: Pick<SessionToolDependencies, "onResult" | "preToolCall">) => void;
 }
 
 type ModelCollection = {
@@ -57,6 +63,8 @@ export type BootOptions = {
   readonly launcher?: FacadeLauncherType;
   readonly finalizeBrief?: (draft: unknown, turn: TurnContext) => Promise<unknown>;
   readonly getTurnContext?: () => TurnContext | undefined;
+  readonly onResult?: SessionToolDependencies["onResult"];
+  readonly preToolCall?: SessionToolDependencies["preToolCall"];
 };
 
 export class BootError extends Error {
@@ -96,11 +104,21 @@ export async function bootRuntime(ctx: SessionContext, options: BootOptions = {}
     throw new BootError("PI_MODEL is unauthorized");
   }
   const launcher = options.launcher ?? new FacadeLauncher({ creDataDir });
+  let activeTurn: TurnContext | undefined;
+  let policies: Pick<SessionToolDependencies, "onResult" | "preToolCall"> = {
+    ...(options.onResult === undefined ? {} : { onResult: options.onResult }),
+    ...(options.preToolCall === undefined ? {} : { preToolCall: options.preToolCall }),
+  };
+  const getTurnContext = options.getTurnContext ?? (() => activeTurn);
+  const setTurnContext = (turn: TurnContext | undefined): void => { activeTurn = turn; };
+  const finalizeBrief = options.finalizeBrief ?? notWiredFinalizer;
   const tools = createSessionTools({
     ctx,
     launcher,
-    finalizeBrief: options.finalizeBrief ?? notWiredFinalizer,
-    getTurnContext: options.getTurnContext ?? notWiredTurnContext,
+    finalizeBrief,
+    getTurnContext,
+    onResult: (toolName, result, turn) => policies.onResult?.(toolName, result, turn),
+    preToolCall: (toolName, args, turn) => policies.preToolCall?.(toolName, args, turn),
   });
   assertExactTools(tools);
 
@@ -120,7 +138,10 @@ export async function bootRuntime(ctx: SessionContext, options: BootOptions = {}
   };
   const created = await (options.createSession ?? createAgentSession)(sessionOptions);
   assertExactTools(tools, created.session);
-  return { session: created.session, tools };
+  return {
+    session: created.session, tools, ctx, launcher, finalizeBrief, getTurnContext, setTurnContext,
+    setTurnPolicies: (next) => { policies = next; },
+  };
 }
 
 export function verifySkills(

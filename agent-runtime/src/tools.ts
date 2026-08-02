@@ -11,11 +11,13 @@ import {
   TurnDeadlineExceeded,
 } from "./runtime.ts";
 
-type SessionToolDependencies = {
+export type SessionToolDependencies = {
   readonly ctx: SessionContext;
   readonly launcher: FacadeLauncher;
   readonly finalizeBrief: (draft: unknown, turn: TurnContext) => Promise<unknown>;
   readonly getTurnContext: () => TurnContext | undefined;
+  readonly onResult?: (toolName: string, result: ToolResult, turn: TurnContext) => void;
+  readonly preToolCall?: (toolName: string, args: unknown, turn: TurnContext) => ToolResult | undefined;
 };
 
 type ToolErrorCode = "NO_ACTIVE_TURN" | "BUDGET_EXCEEDED" | "TURN_DEADLINE_EXCEEDED" | "TURN_CANCELLED" | "REFRESH_ARGS_CHANGED";
@@ -133,10 +135,12 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
     parameters: config.parameters,
     executionMode: "sequential",
     async execute(toolCallId, args) {
-      const turn = deps.getTurnContext();
-      if (turn === undefined) return toolFailure("NO_ACTIVE_TURN");
-      try {
-        const items = argumentItems(args);
+        const turn = deps.getTurnContext();
+        if (turn === undefined) return toolFailure("NO_ACTIVE_TURN");
+        try {
+          const blocked = deps.preToolCall?.(config.name, args, turn);
+          if (blocked !== undefined) return toolResult(blocked);
+          const items = argumentItems(args);
         turn.beforeToolCall(config.name, items === undefined ? {} : { items });
         const turn_id = turnIdFor(turn);
         const argumentsValue = stripArguments(args, config.allowed);
@@ -154,8 +158,9 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
             ...(refresh_request_id === undefined ? {} : { refresh_request_id }),
           },
         };
-        const result = await deps.launcher.invoke(config.name, request);
-        return toolResult(result);
+          const result = await deps.launcher.invoke(config.name, request);
+          deps.onResult?.(config.name, result, turn);
+          return toolResult(result);
       } catch (error) {
         return toolFailure(errorCode(error));
       }
@@ -178,8 +183,13 @@ export function createSessionTools(deps: SessionToolDependencies): ToolDefinitio
         const turn = deps.getTurnContext();
         if (turn === undefined) return toolFailure("NO_ACTIVE_TURN");
         try {
+          const blocked = deps.preToolCall?.("finalize_market_brief", args, turn);
+          if (blocked !== undefined) return toolResult(blocked);
           turn.beforeToolCall("finalize_market_brief", {});
-          return toolResult(await deps.finalizeBrief(args, turn));
+          const result = await deps.finalizeBrief(args, turn);
+          const details: ToolResult = { schema_version: "agent_tool_result.v1", request_id: null, status: "ok", data: isRecord(result) ? result : {}, warnings: [], error: null };
+          deps.onResult?.("finalize_market_brief", details, turn);
+          return toolResult(result);
         } catch (error) {
           return toolFailure(errorCode(error));
         }
