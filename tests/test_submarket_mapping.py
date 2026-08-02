@@ -116,17 +116,21 @@ def test_approved_manual_mapping_becomes_a_canonical_geography_record(tmp_path) 
 
     reader = SQLiteReadRepository(store.database_path)
     context = ReadContext("operator", frozenset({"internal"}))
+    before_promotion_at = datetime.now(UTC)
     assert tuple(
         reader.query_canonical(
-            ReadQuery("geographies"), as_of=_NOW + timedelta(days=1), context=context
+            ReadQuery("geographies"), as_of=before_promotion_at, context=context
         )
     ) == ()
 
     assert store.decide_review(submitted.review_id, decision="approved", actor_id="reviewer")
-    promoted = store.promote_review(submitted.review_id, actor_id="operator")
+    promotion_at = max(datetime.now(UTC), before_promotion_at + timedelta(microseconds=1))
+    promoted = store.promote_review(
+        submitted.review_id, actor_id="operator", now=promotion_at
+    )
     records = tuple(
         reader.query_canonical(
-            ReadQuery("geographies"), as_of=_NOW + timedelta(days=1), context=context
+            ReadQuery("geographies"), as_of=promotion_at, context=context
         )
     )
     report = rebuild_sqlite_projections(store.database_path)
