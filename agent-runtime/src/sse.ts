@@ -2,6 +2,7 @@
 import type * as http from "node:http";
 
 import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
+import type { RecoveryStore } from "./recovery.ts";
 import type { AgentEvent, LifecycleReducer } from "./runtime.ts";
 import { SessionRegistry } from "./sessions.ts";
 
@@ -64,10 +65,12 @@ export class SseHub {
   readonly #sequences = new Map<string, number>();
   readonly #attachments = new Map<string, Set<Attachment>>();
   readonly #terminals = new Set<string>();
+  readonly #recovery: RecoveryStore | undefined;
 
-  constructor(registry: SessionRegistry, options: { readonly now?: () => number } = {}) {
+  constructor(registry: SessionRegistry, options: { readonly now?: () => number; readonly recovery?: RecoveryStore } = {}) {
     this.#registry = registry;
     this.#now = options.now ?? (() => performance.timeOrigin + performance.now());
+    this.#recovery = options.recovery;
   }
 
   attach(sessionId: string, res: http.ServerResponse, lastEventId: string | null = null): AttachResult {
@@ -106,7 +109,16 @@ export class SseHub {
       turn_id: turnId, timestamp: new Date(this.#now()).toISOString(), type, payload,
     };
     this.#ring(sessionId).append(event);
-    if (type === "turn.completed" || type === "turn.failed") this.#terminals.add(terminalKey);
+    if (type === "turn.completed" || type === "turn.failed") {
+      this.#terminals.add(terminalKey);
+      const terminalState = type === "turn.completed" && event.payload.terminal_state === "cancelled"
+        ? "cancelled"
+        : type === "turn.completed" ? "completed" : "failed";
+      const events = this.events(sessionId).filter((item) => item.turn_id === turnId);
+      const artifact = events.findLast((item) => item.type === "artifact.final")?.payload;
+      const recorded = this.#recovery?.record(sessionId, turnId, terminalState, events, artifact);
+      if (recorded !== undefined && !recorded.ok) console.warn("recovery record limit reached", { sessionId, turnId });
+    }
     for (const attachment of this.#attachments.get(sessionId) ?? []) this.#write(attachment, frame(event));
   }
 

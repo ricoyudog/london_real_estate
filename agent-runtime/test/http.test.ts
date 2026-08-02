@@ -73,9 +73,8 @@ test("(b) authenticated routes return their documented placeholders", async (t) 
 
   const turn = await fetch(`${server.origin}/v1/sessions/${session.id}/turns/${turnId}`, { headers });
   const missingTurn = await fetch(`${server.origin}/v1/sessions/${session.id}/turns/missing`, { headers });
-  assert.equal(turn.status, 200);
-  assert.deepEqual(JSON.parse(await turn.text()), { turn_id: turnId, state: "unknown" });
-  assert.equal(missingTurn.status, 404);
+  assert.equal(turn.status, 501);
+  assert.equal(missingTurn.status, 501);
 
   const events = await fetch(`${server.origin}/v1/sessions/${session.id}/events`, { headers });
   assert.equal(events.status, 200);

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import * as http from "node:http";
 
+import type { RecoveryStore } from "./recovery.ts";
 import type { SseHub } from "./sse.ts";
 import { SessionRegistry } from "./sessions.ts";
 
@@ -17,9 +18,9 @@ const ROUTES = [
   { method: "DELETE", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}$`) },
 ] as const;
 
-export function createServer(registry: SessionRegistry, options: { readonly sse?: SseHub } = {}): http.Server {
+export function createServer(registry: SessionRegistry, options: { readonly sse?: SseHub; readonly recovery?: RecoveryStore } = {}): http.Server {
   const turns = new Map<string, "unknown" | "terminal">();
-  return http.createServer((req, res) => handleRequest(registry, turns, options.sse, req, res));
+  return http.createServer((req, res) => handleRequest(registry, turns, options.sse, options.recovery, req, res));
 }
 
 export function parseSessionId(req: http.IncomingMessage): string | null {
@@ -29,7 +30,7 @@ export function parseSessionId(req: http.IncomingMessage): string | null {
   return decodeURIComponent(matched[1]);
 }
 
-function handleRequest(registry: SessionRegistry, turns: Map<string, "unknown" | "terminal">, sse: SseHub | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
+function handleRequest(registry: SessionRegistry, turns: Map<string, "unknown" | "terminal">, sse: SseHub | undefined, recovery: RecoveryStore | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const route = ROUTES.find((candidate) => candidate.pattern.test(path));
   if (route === undefined) return respond(res, 404);
@@ -44,7 +45,7 @@ function handleRequest(registry: SessionRegistry, turns: Map<string, "unknown" |
 
   if (route.pattern.source === ROUTES[1].pattern.source) return createTurn(registry, turns, sessionId, res);
   if (route.pattern.source === ROUTES[2].pattern.source) return cancelTurn(turns, sessionId, decodeSegment(path, 5), res);
-  if (route.pattern.source === ROUTES[3].pattern.source) return getTurn(turns, sessionId, decodeSegment(path, 5), res);
+  if (route.pattern.source === ROUTES[3].pattern.source) return getTurn(recovery, sessionId, decodeSegment(path, 5), res);
   if (route.pattern.source === ROUTES[4].pattern.source) {
     if (sse === undefined) return respond(res, 200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
     const lastEventId = typeof req.headers["last-event-id"] === "string" ? req.headers["last-event-id"] : null;
@@ -95,10 +96,14 @@ function createTurn(registry: SessionRegistry, turns: Map<string, "unknown" | "t
   respondJson(res, 202, { turn_id: turnId });
 }
 
-function getTurn(turns: ReadonlyMap<string, "unknown" | "terminal">, sessionId: string, turnId: string, res: http.ServerResponse): void {
-  const state = turns.get(turnKey(sessionId, turnId));
-  if (state === undefined) return respond(res, 404);
-  respondJson(res, 200, { turn_id: turnId, state });
+function getTurn(recovery: RecoveryStore | undefined, sessionId: string, turnId: string, res: http.ServerResponse): void {
+  if (recovery === undefined) return respond(res, 501);
+  const recovered = recovery.recover(sessionId, turnId);
+  if (!recovered.ok) return respond(res, recovered.reason === "SESSION_GONE" ? 410 : 404);
+  const { turn } = recovered;
+  respondJson(res, 200, turn.artifact === undefined
+    ? { turn_id: turn.turn_id, state: turn.state, events: turn.events }
+    : { turn_id: turn.turn_id, state: turn.state, events: turn.events, artifact: turn.artifact });
 }
 
 function cancelTurn(turns: Map<string, "unknown" | "terminal">, sessionId: string, turnId: string, res: http.ServerResponse): void {
@@ -129,7 +134,7 @@ function respond(res: http.ServerResponse, status: number, headers: http.Outgoin
   res.end();
 }
 
-function respondJson(res: http.ServerResponse, status: number, body: Readonly<Record<string, string>>, headers: http.OutgoingHttpHeaders = {}): void {
+function respondJson(res: http.ServerResponse, status: number, body: Readonly<Record<string, unknown>>, headers: http.OutgoingHttpHeaders = {}): void {
   res.writeHead(status, { "content-type": "application/json", ...headers });
   res.end(JSON.stringify(body));
 }
