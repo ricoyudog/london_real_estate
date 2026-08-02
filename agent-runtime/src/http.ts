@@ -19,11 +19,11 @@ const ROUTES = [
   { method: "DELETE", pattern: new RegExp(`^/v1/sessions/${SESSION_ID}$`) },
 ] as const;
 
-type ServerOptions = { readonly sse?: SseHub; readonly recovery?: RecoveryStore; readonly cancel?: CancelCoordinator };
+type ServerOptions = { readonly sse?: SseHub; readonly recovery?: RecoveryStore; readonly cancel?: CancelCoordinator; readonly runTurn?: (sessionId: string, turnId: string, userMessage: string) => Promise<void> };
 
 export function createServer(registry: SessionRegistry, options?: ServerOptions): http.Server {
   const legacyTurns = options === undefined ? new Map<string, "unknown" | "terminal">() : undefined;
-  return http.createServer((req, res) => handleRequest(registry, legacyTurns, options?.sse, options?.recovery, options?.cancel, req, res));
+  return http.createServer((req, res) => handleRequest(registry, legacyTurns, options, req, res));
 }
 
 export function parseSessionId(req: http.IncomingMessage): string | null {
@@ -33,7 +33,8 @@ export function parseSessionId(req: http.IncomingMessage): string | null {
   return decodeURIComponent(matched[1]);
 }
 
-function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, sse: SseHub | undefined, recovery: RecoveryStore | undefined, cancel: CancelCoordinator | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
+function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, options: ServerOptions | undefined, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const { sse, recovery, cancel } = options ?? {};
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
   const route = ROUTES.find((candidate) => candidate.pattern.test(path));
   if (route === undefined) return respond(res, 404);
@@ -46,7 +47,7 @@ function handleRequest(registry: SessionRegistry, legacyTurns: Map<string, "unkn
   const auth = authenticate(registry, sessionId, req, res);
   if (!auth) return;
 
-  if (route.pattern.source === ROUTES[1].pattern.source) return createTurn(registry, legacyTurns, sessionId, res);
+  if (route.pattern.source === ROUTES[1].pattern.source) return createTurn(registry, legacyTurns, sessionId, req, res, options?.runTurn);
   if (route.pattern.source === ROUTES[2].pattern.source) return cancelTurn(cancel, legacyTurns, sessionId, decodeSegment(path, 5), res);
   if (route.pattern.source === ROUTES[3].pattern.source) return getTurn(recovery, sessionId, decodeSegment(path, 5), res);
   if (route.pattern.source === ROUTES[4].pattern.source) {
@@ -87,7 +88,7 @@ function authenticate(registry: SessionRegistry, sessionId: string, req: http.In
   return true;
 }
 
-function createTurn(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, sessionId: string, res: http.ServerResponse): void {
+function createTurn(registry: SessionRegistry, legacyTurns: Map<string, "unknown" | "terminal"> | undefined, sessionId: string, req: http.IncomingMessage, res: http.ServerResponse, runTurn?: ServerOptions["runTurn"]): void {
   const reserved = registry.reserveTurn(sessionId);
   if (!reserved.ok) {
     if (reserved.reason === "NO_ACTIVE_TURN") return respondJson(res, 409, { error: "active_turn" });
@@ -96,7 +97,34 @@ function createTurn(registry: SessionRegistry, legacyTurns: Map<string, "unknown
   }
   const turnId = randomBytes(16).toString("base64url");
   legacyTurns?.set(turnKey(sessionId, turnId), "unknown");
-  respondJson(res, 202, { turn_id: turnId });
+  if (runTurn === undefined) return respondJson(res, 202, { turn_id: turnId });
+  void readMessage(req).then((message) => {
+    if (message === null) {
+      registry.releaseTurn(sessionId);
+      return respondJson(res, 400, { error: "invalid_message" });
+    }
+    respondJson(res, 202, { turn_id: turnId });
+    void runTurn(sessionId, turnId, message).catch(() => undefined);
+  });
+}
+
+async function readMessage(req: http.IncomingMessage): Promise<string | null> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > 65_536) return null;
+    chunks.push(buffer);
+  }
+  try {
+    const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return typeof value === "object" && value !== null && !Array.isArray(value) && typeof (value as Record<string, unknown>)["message"] === "string"
+      ? (value as Record<string, string>)["message"] ?? null : null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
 }
 
 function getTurn(recovery: RecoveryStore | undefined, sessionId: string, turnId: string, res: http.ServerResponse): void {

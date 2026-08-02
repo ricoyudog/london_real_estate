@@ -189,7 +189,7 @@ export function streamModelText(sessionId: string, turnId: string, hub: SseHub, 
   if (!stream.held) hub.emit(sessionId, turnId, "message.delta", { text: chunk });
 }
 
-export function projectLifecycle(sessionId: string, turnId: string, hub: SseHub, _reducer: LifecycleReducer, event: AgentEvent): void {
+export function projectLifecycle(sessionId: string, turnId: string, hub: SseHub, _reducer: LifecycleReducer, event: AgentEvent, artifact?: unknown): void {
   switch (event.type) {
     case "turn.started":
       return hub.emit(sessionId, turnId, "turn.started", {});
@@ -202,7 +202,7 @@ export function projectLifecycle(sessionId: string, turnId: string, hub: SseHub,
     case "approval.resolved":
       return hub.emit(sessionId, turnId, "approval.resolved", { decision: event.decision });
     case "artifact.final":
-      return hub.emit(sessionId, turnId, "artifact.final", {});
+      return hub.emit(sessionId, turnId, "artifact.final", { artifact: artifact ?? null });
     case "turn.completed":
       return hub.emit(sessionId, turnId, "turn.completed", { terminal_state: event.terminal_state });
     case "turn.failed":

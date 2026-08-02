@@ -4,7 +4,7 @@ import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
 import { LifecycleReducer, type AgentEvent, TurnContext, defaultTurnLimits } from "./runtime.ts";
 import { modelVisibleBytes } from "./tools.ts";
 
-export type RunOptions = { readonly now?: () => number };
+export type RunOptions = { readonly now?: () => number; readonly onTurnCreated?: (turn: TurnContext) => void; readonly populateLedger?: boolean };
 export type TurnOutcome = {
   readonly turn: TurnContext;
   readonly terminal_state: "completed" | "cancelled" | "failed";
@@ -26,6 +26,7 @@ type RunnerState = {
   readonly now: () => number;
   readonly pollNotBefore: Map<string, number>;
   readonly pollIntervals: Map<string, number>;
+  readonly populateLedger: boolean;
   requeryRequired: boolean;
   artifact: unknown;
 };
@@ -42,8 +43,9 @@ export function cancelTurn(booted: BootedRuntime): void {
 
 export async function runTurn(booted: BootedRuntime, userMessage: string, options: RunOptions = {}): Promise<TurnOutcome> {
   const turn = new TurnContext(booted.ctx, defaultTurnLimits, options);
+  options.onTurnCreated?.(turn);
   booted.setTurnContext(turn);
-  const state = newState(options.now ?? performance.now.bind(performance));
+  const state = newState(options.now ?? performance.now.bind(performance), options.populateLedger ?? false);
   states.set(turn, state);
   const outcome = await execute(booted, turn, userMessage, state, true);
   booted.setTurnContext(undefined);
@@ -107,8 +109,8 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
   return outcome(state, turn, "completed");
 }
 
-function newState(now: () => number): RunnerState {
-  return { reducer: new LifecycleReducer(), buffer: new ModelTextBuffer(), now, pollNotBefore: new Map(), pollIntervals: new Map(), requeryRequired: false, artifact: undefined };
+function newState(now: () => number, populateLedger: boolean): RunnerState {
+  return { reducer: new LifecycleReducer(), buffer: new ModelTextBuffer(), now, pollNotBefore: new Map(), pollIntervals: new Map(), populateLedger, requeryRequired: false, artifact: undefined };
 }
 
 function beforeTool(state: RunnerState, toolName: string, args: unknown, _turn: TurnContext): ToolResult | undefined {
@@ -123,6 +125,8 @@ function afterTool(state: RunnerState, toolName: string, result: ToolResult, tur
   if (result.status === "error") return;
   const data = result.data;
   const records = recordArray(data?.["records"]);
+  if (state.populateLedger && toolName === "query_market_data" && data !== null) addQueryLedger(turn, data, records);
+  if (state.populateLedger && toolName === "get_citation_metadata" && data !== null) enrichQueryLedger(turn, data);
   const citations = records.reduce((total, record) => total + stringArray(record["citation_refs"]).length, 0);
   const items = toolName === "get_citation_metadata" ? stringArray(data?.["citation_refs"]).length : records.length;
   turn.chargeAccumulators({ items, records: records.length, citations, modelToolBytes: modelVisibleBytes(result) });
@@ -138,6 +142,43 @@ function afterTool(state: RunnerState, toolName: string, result: ToolResult, tur
   if (toolName === "get_refresh_status") updateRefreshState(state, data);
   if (toolName === "query_market_data") state.requeryRequired = false;
   if (toolName === "finalize_market_brief") state.artifact = result.data;
+}
+
+function addQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown>>, records: readonly Readonly<Record<string, unknown>>[]): void {
+  const anchor = data["anchor_as_of"];
+  const first = records[0];
+  if (typeof anchor !== "string" || first === undefined) return;
+  const observationIds = records.map((record) => record["observation_id"]).filter((value): value is string => typeof value === "string");
+  const citationRefs = records.flatMap((record) => stringArray(record["citation_refs"]));
+  const numeric = isRecord(first["numeric"])
+    ? { ...first["numeric"], period_label: first["numeric"]["period_label"] ?? first["numeric"]["source_date"] }
+    : undefined;
+  turn.addLedgerEntry({
+    kind: "query", anchor_as_of: anchor, observation_ids: observationIds, citation_refs: citationRefs,
+    ...(numeric === undefined ? {} : { numeric_projection: numeric }),
+    freshness: { retrieval_freshness: first["retrieval_freshness"], observation_freshness: first["observation_freshness"] },
+  });
+}
+
+function enrichQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown>>): void {
+  const citations = recordArray(data["citations"]);
+  const citation = citations[0];
+  const query = [...turn.getLedger()].reverse().find((entry) => entry.kind === "query");
+  if (citation === undefined || query === undefined || !isRecord(query.numeric_projection)) return;
+  Object.assign(query.numeric_projection, {
+    published_at: citation["published_at"] ?? null,
+    datasource_confidence: citation["confidence"],
+    source: citation["publisher"],
+    anchor_as_of: query.anchor_as_of,
+  });
+  const known = new Set(query.citation_refs);
+  const novel = citations.filter((item) => typeof item["citation_ref"] === "string" && !known.has(item["citation_ref"]));
+  if (novel.length === 0) return;
+  turn.addLedgerEntry({
+    kind: "citation", anchor_as_of: query.anchor_as_of,
+    observation_ids: novel.map((item) => item["observation_id"]).filter((value): value is string => typeof value === "string"),
+    citation_refs: novel.map((item) => item["citation_ref"]).filter((value): value is string => typeof value === "string"),
+  });
 }
 
 function updateRefreshState(state: RunnerState, data: Readonly<Record<string, unknown>> | null): void {
