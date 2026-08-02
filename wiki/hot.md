@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-01
+updated: 2026-08-02
 tags: [hot, entry]
 pinned: true
 ---
@@ -44,3 +44,5 @@ pinned: true
 - `a20738e` current official file-release support
 - `3633595` ONSPD refresh budget and second confirmation
 - `620b5c9` live ONSPD retention drill
+- Phase 2 Pi Agent Runtime complete: 2a, 2b, and 2c gates passed; `agent-runtime/`
+  Node package; 142 tests; known Phase 1 catalog NF-1.

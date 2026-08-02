@@ -16,3 +16,5 @@ YYYY-MM-DD | action change-name | +added-file -removed-file
 ## Entries
 
 (No entries yet — these are appended during corgispec-archive)
+2026-08-02 | implement pi-agent-runtime-phase-2 | +agent-runtime/ +skills/generate-grounded-market-brief/SKILL.md
+2026-08-02 | implement pi-agent-runtime-phase-2 | +wiki/sessions/2026-08-02-pi-agent-runtime-phase-2.md

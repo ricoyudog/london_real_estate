@@ -1,0 +1,15 @@
+{
+  "schema_version": "skills_manifest.v1",
+  "files": [
+    {
+      "path": "skills/track-uk-macro/SKILL.md",
+      "sha256": "ca0cfdf39246682cdf4effd8042a1059f46443188d7a9d32789ae5286fdd3176",
+      "bytes": 3036
+    },
+    {
+      "path": "skills/generate-grounded-market-brief/SKILL.md",
+      "sha256": "f8495b9f3e79bc8487b7348d6013acbfe198bf49cfb63fd835a322dcb2d7dff1",
+      "bytes": 2634
+    }
+  ]
+}

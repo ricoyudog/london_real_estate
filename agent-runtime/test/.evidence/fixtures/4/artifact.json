@@ -1,0 +1,51 @@
+{
+  "schema_version": "market_brief.v1",
+  "title": "Bank Rate brief",
+  "status": "complete",
+  "facts": [
+    {
+      "claim_id": "bank-rate",
+      "kind": "numeric",
+      "confidence": "high",
+      "numeric_value": "5.25",
+      "numeric_unit": "percent",
+      "numeric_definition": "Official Bank of England Bank Rate series IUDBEDR",
+      "numeric_as_of": "<anchor-as-of>",
+      "numeric_source_date": "2026-07-31",
+      "numeric_period_label": "2026-07-31"
+    }
+  ],
+  "inferences": [],
+  "limitations": [],
+  "as_of": "<anchor-as-of>",
+  "sources": [
+    {
+      "citation_ref": "<citation-ref>",
+      "source": "Bank of England",
+      "published_at": "2026-08-01T09:00:00.000000Z"
+    }
+  ],
+  "lineage": {
+    "bank-rate": {
+      "observation_ids": [
+        "<observation-id>"
+      ],
+      "citation_refs": [
+        "<citation-ref>"
+      ]
+    }
+  },
+  "freshness_warnings": [
+    "Canonical Bank Rate is stale; last-good value retained."
+  ],
+  "published_at": "2026-08-01T09:00:00.000000Z",
+  "publication_date_warning": false,
+  "datasource_confidence": {
+    "bank-rate": "high"
+  },
+  "fact_confidence": {
+    "bank-rate": "high"
+  },
+  "inference_confidence": {},
+  "display_text": "Bank Rate brief"
+}

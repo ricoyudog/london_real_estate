@@ -1,42 +1,51 @@
 ---
 name: track-uk-macro
-description: Retrieve and interpret free official UK interest-rate, monetary-policy, GDP, inflation and labour-market data, including London regional employment indicators. Use when monitoring UK macro conditions, refreshing a London office-market report, comparing UK and London labour signals, or tracing a macro claim to a reproducible BoE, ONS or Nomis endpoint.
+description: Query UK interest-rate, monetary-policy, and macro data through the typed agent facade, with canonical time anchors, freshness labels, and resolved citations.
+type: skill
 ---
 
 # Track UK Macro
 
-## Run the official sources
+## Start with coverage
 
-1. Import the required functions from `nan_fung.datasources.macro`.
-2. Call `fetch_bank_rate` and `fetch_latest_mpc_decision` for policy conditions.
-3. Call `fetch_uk_gdp`, `fetch_uk_inflation`, and `fetch_uk_labour_market` for UK indicators.
-4. Call `fetch_london_labour_market` only when a London regional view is needed.
-5. Preserve every `SourceResult` field and each record's series or dataset code.
+Call `describe_market_data` before any query. It is the authority for product coverage, query kinds, limitations, blocked reasons, canonical availability, and allowed refresh profiles. At launch, only `uk.bank-rate-current` is supported. Do not claim that London office rent, vacancy, or transaction data is available. That coverage is blocked.
 
-```python
-from nan_fung.datasources.macro import (
-    fetch_bank_rate,
-    fetch_latest_mpc_decision,
-    fetch_london_labour_market,
-    fetch_uk_gdp,
-    fetch_uk_inflation,
-    fetch_uk_labour_market,
-)
+If the user's time reference would materially change the answer and they have not specified it, ask which time they mean before making any data call. Make zero data calls until they answer.
+
+## Query canonical data
+
+For the supported Bank Rate capability, call `query_market_data` with:
+
+```json
+{
+  "capability_id": "uk.bank-rate-current",
+  "query_kind": "metrics"
+}
 ```
 
-## Interpret the result
+For an explicit historical or as-of request, include the exact RFC3339 UTC `as_of` supplied or confirmed by the user. For an explicit latest request, omit `as_of`.
 
-- State the reference period, publication or update timestamp, geography, unit, and source URL.
-- Separate observed facts from agent inference.
-- Label ONS headline series as UK and Nomis `E12000007` series as London region.
-- Do not present UK data as a London submarket measure.
-- Do not present London workforce jobs as people, office-only jobs, or resident employment.
-- Mention revisions when comparing values captured on different dates.
-- Return a partial result with its limitation when one source fails; do not invent or silently substitute a value.
+Treat the returned canonical anchor and each record as the facts available for the answer. Preserve and report, where relevant:
 
-## Read source details when needed
+- `anchor_as_of` and `numeric.as_of`
+- `source_date` and `retrieved_at`
+- `numeric.value`, `numeric.unit`, and `numeric.definition`
+- `retrieval_freshness`, `observation_freshness`, `degraded`, `canonical_available`, and warnings
 
-- Read [利率與貨幣政策](../../wiki/research/datasource/05-interest-rates-monetary-policy.md) for BoE endpoints, samples, licensing, and RSS limitations.
-- Read [GDP](../../wiki/research/datasource/06-gdp.md) for `ECYX` and `IHYQ` definitions and revision cautions.
-- Read [通脹](../../wiki/research/datasource/07-inflation.md) before comparing CPI, CPIH, and RPI.
-- Read [就業市場](../../wiki/research/datasource/08-employment-market.md) for ONS/Nomis query dimensions and London limitations.
+Label stale, degraded, or missing data plainly. Keep last-good canonical data when it is returned, but attach its warning. Never invent a number, date, unit, definition, or missing observation.
+
+## Resolve citations
+
+Take `citation_refs` only from `query_market_data` results. Resolve those exact refs with `get_citation_metadata`, with no more than 20 refs in one call. Never invent a citation or substitute an identifier. A numeric fact needs a resolved citation before it can be presented as a numeric fact.
+
+Keep citation metadata separate from the observation. Report limits and missing publication metadata when returned. If a citation cannot be resolved, do not turn its observation into a numeric fact.
+
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.
+
+## Refresh carefully
+
+Request refreshes only with `request_data_refresh` and `request_profile: "bank-rate-latest"`. A refresh acknowledgement or status is not market data.
+
+For an accepted or deduplicated request, wait for the returned `poll_after_seconds` before each `get_refresh_status` call. Make at most three status polls in one turn. After terminal refresh status, call `query_market_data` again to obtain canonical data. A terminal status, including success, does not replace that query.
+
+If a refresh is already fresh, still use `query_market_data` for the answer. If approval is required or refresh cannot complete, explain the limitation without filling gaps with model prose or numbers.
