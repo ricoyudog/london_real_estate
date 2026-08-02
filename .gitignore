@@ -11,6 +11,8 @@ dist/
 
 # Node (reserved)
 node_modules/
+agent-runtime/test-results/
+agent-runtime/playwright-report/
 
 # Tooling state
 .codegraph

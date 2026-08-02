@@ -19,11 +19,19 @@
           <p class="eyebrow">Evidence-led market research</p>
           <h1>London Market Desk</h1>
         </div>
-        <p id="connection-status" class="connection-status" role="status" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span id="connection-label">Starting a secure session…</span>
-        </p>
+        <div class="header-status">
+          <p id="runtime-badge" class="runtime-badge" data-testid="runtime-badge">Pi AgentSession · GLM-5.2</p>
+          <p id="connection-status" class="connection-status" role="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="connection-label">Starting a secure session…</span>
+          </p>
+        </div>
       </header>
+
+      <aside id="demo-banner" class="demo-banner" data-testid="demo-banner" role="note" hidden>
+        <strong>Demo fixture</strong>
+        <span id="demo-label">Deterministic data is loaded for reproducible validation; this is not live ingestion.</span>
+      </aside>
 
       <main id="workspace">
         <section class="editorial-intro" aria-labelledby="workspace-title">
@@ -85,10 +93,13 @@
               <textarea id="chat-input" name="message" rows="3" maxlength="4000" placeholder="Ask a source-grounded market question…" required disabled></textarea>
               <div class="chat-form__footer">
                 <p id="input-help">Responses are limited to host-validated market artifacts.</p>
-                <button id="send-button" class="send-button" type="submit" disabled>
-                  <span>Send question</span>
-                  <span aria-hidden="true">↗</span>
-                </button>
+                <div class="chat-actions">
+                  <button id="cancel-button" class="cancel-button" type="button" disabled>Cancel turn</button>
+                  <button id="send-button" class="send-button" type="submit" disabled>
+                    <span>Send question</span>
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                </div>
               </div>
             </form>
           </section>

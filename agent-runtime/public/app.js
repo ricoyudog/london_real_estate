@@ -14,13 +14,17 @@ const elements = {
   bankRateMeta: document.querySelector("#bank-rate-meta"),
   bankRateValue: document.querySelector("#bank-rate-value"),
   briefStatus: document.querySelector("#brief-status"),
+  cancelButton: document.querySelector("#cancel-button"),
   chatForm: document.querySelector("#chat-form"),
   chatInput: document.querySelector("#chat-input"),
   connectionStatus: document.querySelector("#connection-status"),
   connectionLabel: document.querySelector("#connection-label"),
   coverageGrid: document.querySelector("#coverage-grid"),
+  demoBanner: document.querySelector("#demo-banner"),
+  demoLabel: document.querySelector("#demo-label"),
   overviewStatus: document.querySelector("#overview-status"),
   sendButton: document.querySelector("#send-button"),
+  runtimeBadge: document.querySelector("#runtime-badge"),
   sourceDrawer: document.querySelector("#source-drawer"),
   sourceList: document.querySelector("#source-list"),
   sourceSummary: document.querySelector("#source-summary"),
@@ -30,11 +34,13 @@ const elements = {
 
 const state = {
   activeTurnId: null,
+  cancelling: false,
   closed: false,
   eventController: null,
   lastEventId: null,
   reconnectTimer: null,
   sessionId: null,
+  terminalTurnIds: new Set(),
   token: null,
 };
 
@@ -50,6 +56,10 @@ function bindInteractions() {
     void sendMessage();
   });
 
+  elements.cancelButton.addEventListener("click", () => {
+    void cancelActiveTurn();
+  });
+
   for (const button of document.querySelectorAll("[data-prompt]")) {
     button.addEventListener("click", () => {
       if (button instanceof HTMLButtonElement && typeof button.dataset.prompt === "string") {
@@ -60,10 +70,18 @@ function bindInteractions() {
   }
 
   window.addEventListener("pagehide", () => {
+    closeSession();
     state.closed = true;
     state.eventController?.abort();
     if (state.reconnectTimer !== null) window.clearTimeout(state.reconnectTimer);
   });
+}
+
+function closeSession() {
+  if (!hasSession()) return;
+  const path = sessionPath();
+  const headers = authHeaders();
+  void fetch(path, { method: "DELETE", headers, keepalive: true }).catch(() => undefined);
 }
 
 async function initialise() {
@@ -117,8 +135,17 @@ async function fetchOverview() {
 }
 
 function renderOverview(overview) {
+  renderDeployment(overview.deployment);
   renderBankRate(isRecord(overview.bank_rate) ? overview.bank_rate : null);
   renderCoverage(Array.isArray(overview.coverage) ? overview.coverage : []);
+}
+
+function renderDeployment(deployment) {
+  const demo = isRecord(deployment) && deployment.mode === "demo";
+  elements.demoBanner.hidden = !demo;
+  if (!demo) return;
+  const fixtureLabel = scalar(deployment.fixture_label) ?? "Deterministic fixture";
+  elements.demoLabel.textContent = `${fixtureLabel}. Reproducible demo data is loaded; this is not live ingestion.`;
 }
 
 function renderBankRate(rate) {
@@ -255,6 +282,7 @@ async function sendMessage() {
 
   appendMessage("user", "Your question", message);
   elements.chatInput.value = "";
+  state.cancelling = false;
   setFormAvailability(false);
   elements.turnStatus.textContent = "Sending your question…";
   setBriefStatus("Working", "waiting");
@@ -268,12 +296,39 @@ async function sendMessage() {
     const result = await jsonResponse(response);
     const turnId = textField(result, "turn_id");
     if (!response.ok || turnId === null) throw new Error("message request failed");
+    if (state.terminalTurnIds.has(turnId)) {
+      state.activeTurnId = null;
+      setFormAvailability(true);
+      return;
+    }
     state.activeTurnId = turnId;
+    setFormAvailability(false);
     elements.turnStatus.textContent = "The analyst is preparing a host-validated brief…";
   } catch {
+    state.activeTurnId = null;
     elements.turnStatus.textContent = "The question could not be sent. Please try again.";
     setBriefStatus("Unavailable", "unavailable");
+    renderFailure("RUNTIME_UNAVAILABLE");
     setFormAvailability(true);
+  }
+}
+
+async function cancelActiveTurn() {
+  if (!hasSession() || state.activeTurnId === null || state.cancelling) return;
+  const turnId = state.activeTurnId;
+  state.cancelling = true;
+  setFormAvailability(false);
+  elements.turnStatus.textContent = "Cancelling this turn…";
+  try {
+    const response = await fetch(`${sessionPath()}/turns/${encodeURIComponent(turnId)}/cancel`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!response.ok && response.status !== 409) throw new Error("cancel request failed");
+  } catch {
+    state.cancelling = false;
+    elements.turnStatus.textContent = "The turn could not be cancelled yet.";
+    setFormAvailability(false);
   }
 }
 
@@ -317,6 +372,8 @@ function scheduleReconnect() {
 }
 
 function expireSession() {
+  state.activeTurnId = null;
+  state.cancelling = false;
   state.token = null;
   state.sessionId = null;
   setFormAvailability(false);
@@ -384,14 +441,16 @@ function handleRuntimeEvent(type, event) {
       return;
     case "turn.started":
       state.activeTurnId = turnId ?? state.activeTurnId;
+      renderRuntimeIdentity(payload);
       elements.turnStatus.textContent = "The analyst is gathering host-validated evidence…";
       setBriefStatus("Working", "waiting");
+      setFormAvailability(false);
       return;
     case "tool.started":
       elements.turnStatus.textContent = "Checking the permitted market data tools…";
       return;
     case "approval.required":
-      elements.turnStatus.textContent = "This turn is waiting for a required approval.";
+      elements.turnStatus.textContent = "The host is completing a required policy check.";
       return;
     case "artifact.final":
       renderArtifact(payload.artifact);
@@ -399,10 +458,15 @@ function handleRuntimeEvent(type, event) {
       appendArtifactMessage(payload.artifact);
       return;
     case "turn.completed":
+      if (payload.terminal_state === "cancelled") {
+        renderFailure("TURN_CANCELLED");
+        setBriefStatus("Cancelled", "unavailable");
+      }
       finishTurn(turnId, payload.terminal_state === "cancelled" ? "The turn was cancelled." : "The final brief is ready.");
       return;
     case "turn.failed":
-      finishTurn(turnId, "The turn ended before a final artifact was available.");
+      renderFailure(scalar(payload.reason_code));
+      finishTurn(turnId, failureStatus(scalar(payload.reason_code)));
       setBriefStatus("Unavailable", "unavailable");
       return;
     default:
@@ -411,11 +475,58 @@ function handleRuntimeEvent(type, event) {
 }
 
 function finishTurn(turnId, status) {
+  if (turnId !== null) state.terminalTurnIds.add(turnId);
   if (turnId === null || turnId === state.activeTurnId) {
     state.activeTurnId = null;
+    state.cancelling = false;
     setFormAvailability(true);
+    elements.chatInput.focus({ preventScroll: true });
   }
   elements.turnStatus.textContent = status;
+}
+
+function renderRuntimeIdentity(payload) {
+  const engine = scalar(payload.runtime_engine);
+  const model = scalar(payload.model);
+  if (engine !== "pi-agent-session" || model === null) return;
+  const modelLabel = model.includes("/") ? model.split("/").at(-1) : model;
+  elements.runtimeBadge.textContent = `Pi AgentSession · ${modelLabel}`;
+}
+
+function renderFailure(reasonCode) {
+  elements.artifactContent.replaceChildren();
+  elements.sourceList.replaceChildren();
+  elements.sourceDrawer.hidden = true;
+  const message = document.createElement("p");
+  message.className = "empty-artifact empty-artifact--failure";
+  message.textContent = failureMessage(reasonCode);
+  elements.artifactContent.append(message);
+}
+
+function failureMessage(reasonCode) {
+  switch (reasonCode) {
+    case "TURN_DEADLINE_EXCEEDED":
+      return "The analyst exceeded the turn deadline before producing a final artifact.";
+    case "NUMERIC_GUARD_REJECTED":
+      return "Numeric output was rejected before it could become a final artifact.";
+    case "NO_FINAL_ARTIFACT":
+      return "The runtime ended without a host-finalized market brief.";
+    case "TURN_CANCELLED":
+      return "This turn was cancelled. No result from the cancelled turn is being shown.";
+    case "RUNTIME_UNAVAILABLE":
+    default:
+      return "The Pi runtime is unavailable for this turn. Please retry.";
+  }
+}
+
+function failureStatus(reasonCode) {
+  return reasonCode === "TURN_DEADLINE_EXCEEDED"
+    ? "The turn deadline expired before a final artifact was available."
+    : reasonCode === "NUMERIC_GUARD_REJECTED"
+      ? "Unsafe numeric prose was rejected; no final artifact was published."
+      : reasonCode === "NO_FINAL_ARTIFACT"
+        ? "The turn ended without a host-finalized artifact."
+        : "The Pi runtime was unavailable for this turn.";
 }
 
 function renderArtifact(artifact) {
@@ -445,15 +556,54 @@ function renderArtifact(artifact) {
     elements.artifactContent.append(summary);
   }
 
-  renderFacts(artifact.facts);
-  renderInferences(artifact.inferences);
+  renderArtifactOverview(artifact);
+  renderFreshnessWarnings(artifact.freshness_warnings);
+  renderFacts(artifact.facts, artifact.fact_confidence, artifact.datasource_confidence);
+  renderInferences(artifact.inferences, artifact.inference_confidence);
   renderLimitations(artifact.limitations);
+  renderLineage(artifact.lineage);
   renderSources(artifact.sources);
 
   if (artifact.schema_version !== "market_brief.v1") renderUnknownArtifact(artifact);
 }
 
-function renderFacts(facts) {
+function renderArtifactOverview(artifact) {
+  const metadata = document.createElement("dl");
+  metadata.className = "artifact-meta";
+  appendArtifactMetadata(metadata, "As of", scalar(artifact.as_of));
+  appendArtifactMetadata(metadata, "Published", scalar(artifact.published_at));
+  if (artifact.publication_date_warning === true) appendArtifactMetadata(metadata, "Publication", "Publication date unavailable");
+  if (metadata.childElementCount > 0) elements.artifactContent.append(metadata);
+}
+
+function appendArtifactMetadata(list, label, value) {
+  if (value === null) return;
+  const group = document.createElement("div");
+  const term = document.createElement("dt");
+  const description = document.createElement("dd");
+  term.textContent = label;
+  description.textContent = value;
+  group.append(term, description);
+  list.append(group);
+}
+
+function renderFreshnessWarnings(warnings) {
+  if (!Array.isArray(warnings)) return;
+  const values = warnings.map(scalar).filter((value) => value !== null);
+  if (values.length === 0) return;
+  const section = artifactSection("Freshness warnings");
+  const list = document.createElement("ul");
+  list.className = "warning-list";
+  for (const warning of values) {
+    const item = document.createElement("li");
+    item.textContent = warning;
+    list.append(item);
+  }
+  section.append(list);
+  elements.artifactContent.append(section);
+}
+
+function renderFacts(facts, factConfidence, datasourceConfidence) {
   if (!Array.isArray(facts) || facts.length === 0) return;
   const section = artifactSection("Facts");
   const list = document.createElement("ul");
@@ -473,11 +623,16 @@ function renderFacts(facts) {
       : scalar(fact.text) ?? "No displayable fact text.";
     item.append(label, value);
 
-    const asOf = scalar(fact.numeric_as_of);
-    if (asOf !== null) {
+    const claimId = scalar(fact.claim_id);
+    const metadataValues = [
+      scalar(fact.numeric_as_of) === null ? null : `As of ${scalar(fact.numeric_as_of)}`,
+      confidenceText("Fact confidence", confidenceFor(factConfidence, claimId)),
+      confidenceText("Datasource confidence", confidenceFor(datasourceConfidence, claimId)),
+    ].filter((entry) => entry !== null);
+    if (metadataValues.length > 0) {
       const metadata = document.createElement("span");
       metadata.className = "fact-meta";
-      metadata.textContent = `As of ${asOf}`;
+      metadata.textContent = metadataValues.join(" · ");
       item.append(metadata);
     }
     list.append(item);
@@ -489,7 +644,7 @@ function renderFacts(facts) {
   }
 }
 
-function renderInferences(inferences) {
+function renderInferences(inferences, inferenceConfidence) {
   if (!Array.isArray(inferences) || inferences.length === 0) return;
   const section = artifactSection("Inferences");
   const list = document.createElement("ol");
@@ -505,6 +660,14 @@ function renderInferences(inferences) {
     content.className = "inference-text";
     content.textContent = text;
     item.append(content);
+    const claimId = scalar(inference.claim_id);
+    const confidence = confidenceText("Inference confidence", confidenceFor(inferenceConfidence, claimId));
+    if (confidence !== null) {
+      const confidenceElement = document.createElement("span");
+      confidenceElement.className = "inference-meta";
+      confidenceElement.textContent = confidence;
+      item.append(confidenceElement);
+    }
     const caveat = scalar(inference.caveat);
     if (caveat !== null) {
       const caveatElement = document.createElement("span");
@@ -519,6 +682,14 @@ function renderInferences(inferences) {
     section.append(list);
     elements.artifactContent.append(section);
   }
+}
+
+function confidenceFor(mapping, claimId) {
+  return isRecord(mapping) && claimId !== null ? scalar(mapping[claimId]) : null;
+}
+
+function confidenceText(label, confidence) {
+  return confidence === null ? null : `${label}: ${humanStatus(confidence)}`;
 }
 
 function renderLimitations(limitations) {
@@ -539,6 +710,29 @@ function renderLimitations(limitations) {
   }
 }
 
+function renderLineage(lineage) {
+  if (!isRecord(lineage) || Object.keys(lineage).length === 0) return;
+  const section = artifactSection("Lineage");
+  const list = document.createElement("dl");
+  list.className = "lineage-list";
+  for (const [claimId, value] of Object.entries(lineage)) {
+    if (!isRecord(value)) continue;
+    const observationIds = Array.isArray(value.observation_ids) ? value.observation_ids.map(scalar).filter((item) => item !== null) : [];
+    const citationRefs = Array.isArray(value.citation_refs) ? value.citation_refs.map(scalar).filter((item) => item !== null) : [];
+    const group = document.createElement("div");
+    const term = document.createElement("dt");
+    const description = document.createElement("dd");
+    term.textContent = claimId;
+    description.textContent = `Observations: ${observationIds.join(", ") || "none"} · Citations: ${citationRefs.join(", ") || "none"}`;
+    group.append(term, description);
+    list.append(group);
+  }
+  if (list.childElementCount > 0) {
+    section.append(list);
+    elements.artifactContent.append(section);
+  }
+}
+
 function renderSources(sources) {
   if (!Array.isArray(sources) || sources.length === 0) return;
   let sourceCount = 0;
@@ -547,7 +741,17 @@ function renderSources(sources) {
     const name = scalar(source.source);
     if (name === null) continue;
     const item = document.createElement("li");
-    item.textContent = name;
+    const sourceUrl = safeHttpUrl(source.public_url);
+    if (sourceUrl === null) {
+      item.append(name);
+    } else {
+      const link = document.createElement("a");
+      link.href = sourceUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = name;
+      item.append(link);
+    }
     const publishedAt = scalar(source.published_at);
     if (publishedAt !== null) {
       const date = document.createElement("small");
@@ -614,6 +818,10 @@ function setFormAvailability(available) {
   const enabled = available && state.activeTurnId === null && hasSession();
   elements.chatInput.disabled = !enabled;
   elements.sendButton.disabled = !enabled;
+  elements.cancelButton.disabled = !hasSession() || state.activeTurnId === null || state.cancelling;
+  for (const button of document.querySelectorAll("[data-prompt]")) {
+    if (button instanceof HTMLButtonElement) button.disabled = !enabled;
+  }
 }
 
 function authHeaders(extra = {}) {

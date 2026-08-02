@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node --env-file=.env --experimental-strip-types src/server.ts",
     "serve": "node --experimental-strip-types src/server.ts",
-    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts test/fixtures/*.test.ts",
+    "test:browser": "playwright test",
     "test:glm": "RUN_REAL_MODEL_SMOKE=1 node --env-file=.env --experimental-strip-types --test test/real-model-e2e.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -21,6 +22,8 @@
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "@types/node": "22.20.0"
+    "@types/node": "22.20.0",
+    "@playwright/test": "^1.62.1",
+    "@axe-core/playwright": "^4.12.1"
   }
 }
