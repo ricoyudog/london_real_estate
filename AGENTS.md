@@ -26,7 +26,10 @@ nan_fung/
 │   ├── read_api/         # typed in-process read service, keyset pagination, citation projection
 │   ├── refresh_api/      # bounded refresh broker + operational backend
 │   └── agent_tools/      # `nan-fung-agent-tools` subprocess facade + JSON contracts
-├── tests/                # 47 modules, ~396 tests; offline-by-default pytest
+├── tests/                # 49 modules, 402 collected; offline-by-default pytest
+├── agent-runtime/        # Pi/TypeScript runtime + same-origin HTTP/SSE dashboard
+├── demo/                 # deterministic Docker fixture initializer and asset
+├── docker-compose.yml    # one-shot init + health-gated market-desk service
 ├── skills/               # 7 OpenAI-agent skill bundles (SKILL.md + agents/openai.yaml)
 ├── wiki/                 # tracked Obsidian vault: architecture, decisions, research
 ├── docs/                 # datasource-operations + datasource-acceptance runbooks
@@ -86,7 +89,7 @@ Highest-centrality symbols (edit with blast radius in mind):
 - **Do not introduce Ruff/Black/mypy/isort config without explicit ask.** Project ships no formatter/linter config; do not silently add one.
 - **Do not parse evidence in-process without the sandbox.** Parsers run under macOS `sandbox-exec` via `ingestion/parser_runner.py`. Adding a parser means binding it through the sandbox path, not calling it directly.
 - **Do not extend `OperationalStore` casually.** It is already ~4900 LOC. New stateful surfaces go in their own module and compose through it.
-- **Do not add an HTTP server.** Read API is in-process; agent tools are a subprocess contract. The documented Node/dashboard runtime is not in this repo.
+- **Do not add a second HTTP server.** The same-origin Node dashboard/runtime owns HTTP/SSE; Python reads stay in-process and agent tools remain a subprocess contract.
 - **Do not follow symlinks for operator-supplied files.** `_read_fixture`, cursor secret, and CAS temp files all open with `O_NOFOLLOW`.
 - **Do not emit parser tracebacks across the sandbox boundary.** `_sandbox_child_main` strips tracebacks to `PARSER_<ErrorType>` codes only.
 - **Do not rename or reorder existing migrations.** Checksums are recorded at apply time; `_validate_applied_history` will refuse to start.
@@ -134,8 +137,8 @@ nan-fung-agent-tools <tool-name> < request.json > result.json
 
 - **Naming drift.** Package is `nan-fung`/`nan_fung`; OpenSpec tracks GitHub `ricoyudog/london_real_estate`. Likely historical.
 - **macOS dependency for ingestion.** Parser isolation uses `sandbox-exec`. Non-macOS hosts can run reads/migrations/health but ingestion should stay disabled unless `health` reports `parser_isolation.available`.
-- **No CI, no Dockerfile, no service manifest.** Deployment is manual wheel install + external service manager (launchd/systemd/cron calling `cre daemon once`).
-- **Documented Node/dashboard runtime is absent.** `wiki/architecture/agent-runtime.md` describes a Pi/TypeScript agent service; not in this repo.
-- **One currently failing offline test** at head: `tests/test_submarket_mapping.py::test_approved_manual_mapping_becomes_a_canonical_geography_record`. Not blocking, but the gate is not green.
+- **No CI.** Production ingestion still needs an external macOS service manager; the Docker stack is a deterministic read/runtime demo and never runs the daemon.
+- **Node/dashboard runtime is present.** `agent-runtime/` implements Pi `createAgentSession`, HTTP/SSE, host finalization, and the same-origin UI.
+- **Offline gate is green.** Current verification is `387 passed, 15 deselected`; update this note when the collected suite changes.
 - **`operational.py` is a known hotspot.** ~4900 LOC, 134 callers. Edit carefully; prefer composing through it from a new module.
 - **`.codegraph` is a gitignored symlink** to local CodeGraph state — first `git add -A` staged it accidentally; see `memory/pitfalls`.

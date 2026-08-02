@@ -53,8 +53,8 @@ a product case is answerable.
 
 ## 3. Configure the runtime
 
-`agent-runtime/.env` is for local Node execution and is intentionally separate
-from the root Compose `.env`:
+`agent-runtime/.env` is the single untracked credentials file used by both
+local Node execution and the Docker demo:
 
 ```dotenv
 PI_MODEL=glm/GLM-5.2
@@ -63,44 +63,47 @@ PI_API_KEY=replace-me
 CRE_DATA_DIR=/absolute/path/to/canonical-data
 ```
 
-Run `npm run start` within `agent-runtime/`. The process refuses to start
-without all PI values and a canonical data directory. The browser receives an
-ephemeral bearer only in memory; it uses authenticated `fetch` for SSE because
-native `EventSource` cannot attach that header.
+Run `npm run start` within `agent-runtime/` for native development. The process
+refuses to start without all PI values and a canonical data directory. The
+browser receives an ephemeral bearer only in memory; it uses authenticated
+`fetch` for SSE because native `EventSource` cannot attach that header.
 
 ## 4. Serve it with Docker
 
-The Docker image is runtime/read-only. It migrates an empty `/data` volume then
-starts the Node service; it neither runs the scheduler nor collects data.
+The Compose stack is a deterministic fixture demo. The Linux image is still
+runtime/read-only: it neither runs the scheduler nor collects live data. A
+one-shot `demo-data-init` service migrates the dedicated named volume, verifies
+the packaged fixture checksum, seeds canonical Bank Rate data once, and writes
+a versioned marker before the Node service starts.
 
 ```sh
-cp .env.example .env
-chmod 600 .env
-docker compose up --build
+cp agent-runtime/.env.example agent-runtime/.env
+chmod 600 agent-runtime/.env
+# Set PI_BASE_URL and PI_API_KEY in agent-runtime/.env.
+docker compose up --build --wait
 ```
 
-Keep `CRE_DATA_VOLUME=cre-data` for a fresh demo volume. To attach host-managed
-canonical data, point it at an absolute shared macOS path:
+`market-desk` starts only after initialization succeeds and exposes a healthcheck
+for `docker compose --wait`. Demo sessions intentionally receive no refresh
+profile because no ingestion daemon exists in the container.
 
-```dotenv
-CRE_DATA_VOLUME=/absolute/path/to/canonical-data
-```
-
-The path must be shared with Docker Desktop or Colima. In particular, Colima
-may map macOS `/tmp` to a separate empty VM directory; prefer a deliberately
-shared directory under the user home or project volume and verify with a
-read-only `observations latest` call after startup.
-
-Do not mount a directory used by another active writer unless the host's
-single-writer policy has been considered. The dashboard/Facade child performs
-read-only queries; ingestion remains the host's responsibility.
+Use `docker compose down` to stop the stack while retaining fixture data. A
+subsequent `docker compose up --wait` verifies marker, database integrity, and
+the canonical observation without reseeding. Use `docker compose down -v` only
+when the dedicated demo volume should be removed; the next `up --build --wait`
+recreates it automatically. A non-demo startup that encounters the demo marker
+fails closed.
 
 ## 5. First checks and troubleshooting
 
-- A blank/new store is expected to show dashboard coverage as unavailable.
+- The Docker demo must show its fixture banner and canonical `5.25 percent`
+  Bank Rate card; it is never a live-rate claim.
 - Run `cre ... health` on the data host before investigating the dashboard.
-- Run `cd agent-runtime && npm test && npm run typecheck` for runtime checks.
-- Run `uv run pytest`; currently one unrelated submarket mapping regression is
-  known at the repository baseline, so record it separately from dashboard work.
+- Run `cd agent-runtime && npm test && npm run typecheck && npm run test:browser`
+  for runtime and UI checks.
+- Run `uv run pytest` for the complete offline Python gate.
+- Run `cd agent-runtime && npm run test:glm` only with the private GLM
+  credentials configured; the test forbids a fake session factory and model
+  override.
 - Never commit `.env`, canonical `data/`, raw evidence, backup files, or API
   keys. `.gitignore` and `.dockerignore` exclude them.

@@ -1,6 +1,6 @@
 ## OVERVIEW
 
-Pytest suite: 47 modules and about 396 tests. Offline by default, integration-heavy, with real temporary SQLite and CAS state.
+Pytest suite: 49 modules and 402 collected tests (`387 passed, 15 deselected` in the current offline gate). Integration-heavy, with real temporary SQLite and CAS state.
 
 ## STRUCTURE
 
@@ -54,7 +54,7 @@ uv run pytest tests/test_operational_store.py
 
 - Do not add `conftest.py`.
 - Do not add a shared fixture factory.
-- Do not delete failing tests to pass. Current known failure: `test_submarket_mapping.py::test_approved_manual_mapping_becomes_a_canonical_geography_record`.
+- Do not delete failing tests to pass. Keep time-dependent tests anchored to explicit UTC instants.
 - Do not add real-network tests without a marker.
 - Do not instantiate `OperationalStore` without `tmp_path`.
 - Do not leave SQLite connections open.

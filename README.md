@@ -10,12 +10,10 @@ and ranked market news are visibly unavailable until approved canonical sources
 are delivered. The system must never fill those gaps with model-generated
 numbers.
 
-![Dashboard overview using a temporary test fixture](wiki/questions/Test_result/screenshots/dashboard-overview-bank-rate.png)
+![GLM-5.2 host-finalized Bank Rate brief](wiki/questions/Test_result/screenshots/dashboard-glm-desktop.jpg)
 
-![TC-01 shown honestly as unavailable](wiki/questions/Test_result/screenshots/dashboard-tc01-unavailable.png)
-
-The `5.25 percent` shown in these screenshots is a temporary test fixture, not
-a live market claim. See the recorded [browser test](wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02.md).
+The `5.25 percent` shown here is a deterministic demo fixture, not a live market
+claim. See the recorded [browser test](wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02.md).
 
 ## Fast start (local macOS development)
 
@@ -58,26 +56,37 @@ Rate fixture before starting the service:
 uv run python agent-runtime/test/helpers/seed_bank_rate.py /absolute/path/to/canonical-data 5.25
 ```
 
-## Docker service
+## One-command Docker demo
 
-Copy the root environment example and start Compose:
+Create the untracked credentials file once, set `PI_BASE_URL` and `PI_API_KEY`,
+then start the complete demo:
 
 ```sh
-cp .env.example .env
-chmod 600 .env
-docker compose up --build
+cp agent-runtime/.env.example agent-runtime/.env
+chmod 600 agent-runtime/.env
+docker compose up --build --wait
 ```
 
-The service listens on <http://127.0.0.1:8787>, persists `/data`, and runs an
-idempotent schema migration at startup. With the default `CRE_DATA_VOLUME`, it
-uses the named `cre-data` volume and starts with no observations; the UI will
-truthfully show unavailable data.
+Open <http://127.0.0.1:8787>. Compose first runs the one-shot
+`demo-data-init` service, migrates the dedicated `market-desk-demo-data` volume,
+verifies the packaged Bank Rate fixture checksum, and writes a versioned marker.
+The UI, HTTP/SSE transport, typed Facade, and Pi `createAgentSession` runtime
+then start behind a healthcheck suitable for `--wait`.
 
-For a dashboard container to read data collected on a supported macOS host,
-set `CRE_DATA_VOLUME` in the root `.env` to that host's absolute canonical-data
-directory. Docker Desktop must be allowed to share the directory. **Do not run
-`cre daemon` or ingestion inside this Linux container:** parser isolation needs
-macOS `sandbox-exec`.
+This mode is explicitly a reproducible fixture demo. It does not run live
+ingestion or grant a refresh profile. Linux containers must not run `cre daemon`
+because parser isolation depends on macOS `sandbox-exec`.
+
+```sh
+docker compose down      # stop containers; preserve the seeded demo volume
+docker compose up --wait # restart and verify the existing marker/data
+
+docker compose down -v   # remove only this Compose project's demo volume
+docker compose up --build --wait # migrate and seed it again
+```
+
+The initializer fails closed outside `MARKET_DESK_MODE=demo`, including when a
+demo marker is found in a non-demo startup.
 
 ## Data pipeline
 
@@ -99,15 +108,19 @@ and [the datasource operations runbook](docs/datasource-operations.md).
 
 ```sh
 uv run pytest
-cd agent-runtime && npm test && npm run typecheck
+cd agent-runtime
+npm test
+npm run typecheck
+npm run test:browser
 ```
 
-The full Python suite currently has one pre-existing unrelated failure in
-`tests/test_submarket_mapping.py`; the runtime/dashboard targeted tests and
-Node gate are documented in the test result record above.
+With a configured private `.env`, `npm run test:glm` performs the opt-in real
+GLM-5.2/Pi acceptance without a fake session factory or model override. The
+dated deterministic, browser, Docker, and live-model results are recorded in
+[`tests/Test case.md`](tests/Test%20case.md).
 
-## GitHub readiness
+## Local state and secrets
 
 `.env`, local data, virtual environments, node modules, evidence scratch space,
-and editor state are ignored. The repository is ready to commit or push after
-you review the diff, but this change does not push anything remotely.
+generated browser reports, and editor state are ignored. Never commit the
+credentials file, API keys, canonical data, raw evidence, or backups.

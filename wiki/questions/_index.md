@@ -13,5 +13,5 @@ updated: 2026-08-02
 
 ## Test Results
 
-- [[wiki/questions/Test_result/TC-01-runtime-live-test-2026-08-02|TC-01 Agent Runtime Live Test — 2026-08-02]] — passed；中文 TC-01 正確回覆 coverage unavailable，Bank Rate 真實 GLM E2E 已完成 citation-grounded brief。
-- [[wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02|TC-01 Dashboard UI Test — 2026-08-02]] — passed；實際瀏覽器 UI 已顯示 Bank Rate 與四個 unavailable coverage cards，並完成中文 TC-01 對話與截圖。
+- [[wiki/questions/Test_result/TC-01-runtime-live-test-2026-08-02|TC-01 Agent Runtime Live Test — 2026-08-02]] — passed；真實 GLM-5.2 經 Pi `createAgentSession`、typed tools 與 host finalizer 完成 Bank Rate，unsupported coverage 與 cancel trace 均 fail-safe。
+- [[wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02|TC-01 Dashboard UI Test — 2026-08-02]] — passed；一鍵 Docker fixture、in-app browser Bank Rate／overview／West End／cancel-retry、responsive 與 accessibility evidence 已完成。

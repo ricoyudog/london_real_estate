@@ -12,7 +12,7 @@ pinned: true
 ## Active Changes
 - Datasource operational system merged to `main`; remaining work is
   source-governance approval and product-coverage delivery, not another ad-hoc scraper.
-- Runtime/dashboard delivery is complete: an unqualified date now reaches Pi for the latest canonical view; the browser and Docker service visibly preserve unavailable coverage rather than inventing market values.
+- Runtime/dashboard delivery is complete: an unqualified date reaches Pi for the latest canonical view; the one-command Docker fixture demo and browser visibly preserve unavailable coverage rather than inventing market values.
 
 ## Recent Decisions
 - Proposed [[wiki/decisions/datasource-database-and-scheduled-ingestion|Datasource Database and Scheduled Ingestion Pipeline]]: original SQLite＋CAS data model, durable scheduling, evidence/revision/as-of semantics, source operating matrix, and acceptance specification.
@@ -32,7 +32,7 @@ pinned: true
   EPC workflows have real evidence-to-canonical validation.
 - **Policy-gated**: PLD, restricted content, BNP,
   Rightmove and GLA workflows remain blocked or manual review.
-- **Delivered**: Pi runtime, typed Facade boundary, same-origin dashboard and Docker read service. Product coverage remains deliberately narrower than engineering workflow coverage.
+- **Delivered**: Pi runtime, typed Facade boundary, same-origin dashboard, reproducible Docker fixture initializer, browser regression suite and real GLM-5.2 acceptance. Product coverage remains deliberately narrower than engineering workflow coverage.
 - **Legacy**: direct `SourceResult` fetchers remain compatibility adapters, not canonical ingestion.
 
 ## Recent Pitfalls
@@ -47,4 +47,4 @@ pinned: true
 - `3633595` ONSPD refresh budget and second confirmation
 - `620b5c9` live ONSPD retention drill
 - 2026-08-02 runtime repair: real GLM Bank Rate E2E and Chinese unavailable TC-01 passed; citation locator contract is fixed.
-- 2026-08-02 dashboard / Docker: actual browser screenshots and seeded-container TC-01 pass; `docs/London-Market-Desk-Architecture-and-Demo-2026-08-02.pptx` delivered.
+- 2026-08-02 dashboard / Docker: Bank Rate, partial overview, unavailable West End and cancel/retry passed in the in-app browser; cancelled Pi trace terminates promptly; final six-slide PPTX delivered.

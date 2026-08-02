@@ -32,8 +32,8 @@ manifest, not by a Skill or a test question.
 
 The Phase 2 deterministic runner derives the following rules from this catalog:
 
-- A material date/period omitted by the user requires clarification before any
-  data call; explicit `latest` uses canonical latest.
+- An unqualified request uses the latest canonical view; the returned artifact
+  still carries the authoritative `as_of` and freshness metadata.
 - Explicit historical/as-of requests query that canonical anchor and do not
   silently refresh it.
 - Relative-time fixtures use fixed absolute start/end boundaries in
@@ -42,6 +42,34 @@ The Phase 2 deterministic runner derives the following rules from this catalog:
 - A terminal refresh is not a market-data result: the runner re-queries
   canonical data and preserves last-good data with stale/degraded/partial
   warnings when refresh fails.
+
+## Full-stack delivery verification — 2026-08-02
+
+本輪驗收以 deterministic gates、真實 GLM-5.2 及 Docker in-app browser 三層互相
+對帳。Docker 中的 `5.25 percent` 是 packaged fixture，不是 live market claim。
+
+| Gate | Result |
+|---|---|
+| Python offline suite | `387 passed, 15 deselected`；包含 time-safe submarket promotion 與 demo initializer/Compose contracts。 |
+| Node unit/integration | `181` tests；`179 passed, 2 skipped, 0 failed`，nested fixtures 已納入 `npm test`；`npm run typecheck` 通過。 |
+| Browser regression | `9 passed`；涵蓋 session/reload cleanup、seeded/empty/stale overview、suggested prompts、中文/英文/多行/4000 字、double submit、16-turn limit、failure-after-success、cancel/retry、SSE replay、responsive、keyboard、reduced motion 與 axe。 |
+| Real model CLI | `npm run test:glm` 使用 private `.env` 的 `glm/GLM-5.2` 通過；沒有 `modelsOverride` 或 fake session factory。模型曾在 host budget 內重試 finalizer，仍保留 `query_market_data → get_citation_metadata → finalize_market_brief` 序列。 |
+| Docker lifecycle | fresh `down -v → up --build --wait` 自動 seed；`down → up --wait` 回報 marker `verified` 且不重複 seed；non-demo mode 遇 marker fail closed。 |
+
+真實 Docker browser turn 與 sanitized `pi_turn_trace.v1` 對帳如下：
+
+| Browser case | Turn ID | Host result / trace |
+|---|---|---|
+| London office overview | `Zv22sIqZFGSuto7pYpCkxg` | UI `Partial`；只顯示 canonical Bank Rate，rent/vacancy/transactions 明列 unavailable；`describe_market_data → query_market_data → get_citation_metadata → finalize_market_brief`。 |
+| Cancel | `j2oYm8y3wDU_I5tqvmS-Dg` | `terminal_state: cancelled`，`duration_ms: 282.173`；舊 brief 清除，session 立即可接受下一輪。 |
+| Bank Rate retry | `UhnCoGfGeJLIvMa6w5idvw` | UI `Complete`、`5.25 percent`、source/as-of/freshness/confidence/lineage；完整 query/citation/finalizer sequence。 |
+| West End vacancy | `stk_1xOQF876CMPqA2p1Tw` | UI `Unavailable`、0 vacancy facts/sources、沒有模型生成的 vacancy number；`describe_market_data → finalize_market_brief`。 |
+
+Browser console 的 warning/error 記錄為空；trace 不含 prompt、bearer 或 API key。實際
+畫面保存在 [desktop](../wiki/questions/Test_result/screenshots/dashboard-glm-desktop.jpg)
+與 [mobile](../wiki/questions/Test_result/screenshots/dashboard-glm-mobile.jpg)，完整紀錄見
+[TC-01 dashboard UI test](../wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02.md)
+及 [runtime live test](../wiki/questions/Test_result/TC-01-runtime-live-test-2026-08-02.md)。
 
 ## TC-01: Prime rent lookup (simple)
 
