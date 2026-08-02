@@ -2,7 +2,7 @@
 type: wiki
 updated: 2026-08-02
 status: accepted
-implementation_status: planned
+implementation_status: complete
 phase_1_prerequisite: verified
 source: "[[wiki/decisions/agent-tool-facade-foundation|Agent Tool Facade Foundation]]"
 tags: [agent, runtime, pi, skills, mvp, decision]
@@ -375,6 +375,23 @@ host-hydrated、citation-grounded、明示 partial coverage 的 `market_brief.v1
 不得宣稱：ONSPD 已 production-enabled、TC-01–TC-10 全部可回答、Agent 有 filesystem
 or general web research capability、或 Pi service 是 canonical writer/security-complete
 production service。
+
+## Implementation evidence (2026-08-02)
+
+Phase 2a, 2b, and 2c gates passed. A controlled Pi session can produce a
+replayable, host-hydrated, citation-grounded `market_brief.v1` with explicit
+partial coverage, sourced from canonical Bank Rate.
+
+Evidence is recorded in `agent-runtime/test/.evidence/gate-{2a,2b,2c}/`
+manifests, with 34, 52, and 19 disjoint primary test IDs respectively, the
+142-test suite, and the real-model smoke-gate placeholder. NF-1 remains a
+known Phase 1 catalog limitation: the packaged locator schema rejects the
+facade's nested `record_locator` shape. The Phase 1 catalog fix is deferred;
+Phase 2 fixtures and integration use a loosened temporary catalog.
+
+This does not make ONSPD production-enabled, make TC-01 through TC-10 all
+answerable, grant filesystem or web research capability, or make the Pi
+runtime a security-complete production service.
 
 ## References
 

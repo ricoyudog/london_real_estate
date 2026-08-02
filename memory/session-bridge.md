@@ -13,6 +13,7 @@ updated: 2026-07-31
 - **Branch**: main (tracking origin/main)
 
 ## Done (last session completed)
+- Phase 2 Pi Agent Runtime (2a/2b/2c) complete in worktree `feature/pi-agent-runtime-phase-2`; awaiting final wave + merge decision
 - Initialised git in this folder, wired `origin` → `ricoyudog/london_real_estate`
 - Discovered existing Python codebase (was NOT empty — `src/nan_fung/datasources/` + 7 skills + 31 tests already present)
 - Expanded `.gitignore` (Python/venv/caches/tooling state), verified `pytest -m "not live"` → 18 passed

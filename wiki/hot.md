@@ -36,3 +36,5 @@ pinned: true
 - `b8453f8` operator APIs, projections and delivery controls
 - `0511da9` live Bank Rate canonical-persistence test
 - `a20738e` current official file-release support
+- Phase 2 Pi Agent Runtime complete: 2a, 2b, and 2c gates passed; `agent-runtime/`
+  Node package; 142 tests; known Phase 1 catalog NF-1.
