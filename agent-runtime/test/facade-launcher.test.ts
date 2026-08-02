@@ -60,6 +60,19 @@ async function waitForGone(pids: readonly number[]): Promise<void> {
   assert.fail(`processes survived: ${pids.join(",")}`);
 }
 
+async function waitForPidFile(path: string): Promise<readonly number[]> {
+  const deadline = performance.now() + 4_000;
+  while (performance.now() < deadline) {
+    try {
+      return readFileSync(path, "utf8").trim().split("\n").map(Number);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+  }
+  assert.fail(`helper did not become ready: ${path}`);
+}
+
 test("a/b: real facade uses the explicit migrated store from an unrelated parent cwd", async () => {
   const dataDir = migratedStore();
   const oldCwd = process.cwd();
@@ -119,10 +132,12 @@ test("f: timeout applies the bounded group cleanup", async () => {
 test("g: cancellation applies the same bounded group cleanup", async () => {
   const dataDir = migratedStore();
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), 500);
-  const result = await withHelper(dataDir).invoke("describe_market_data", request("call_cancel"), { cancelEvent: controller.signal });
+  const invocation = withHelper(dataDir).invoke("describe_market_data", request("call_cancel"), { cancelEvent: controller.signal });
+  const pids = await waitForPidFile(join(dataDir, "call_cancel.pids"));
+  controller.abort();
+  const result = await invocation;
   assert.equal(result.error?.code, "TIMEOUT");
-  await waitForGone(readFileSync(join(dataDir, "call_cancel.pids"), "utf8").trim().split("\n").map(Number));
+  await waitForGone(pids);
 });
 
 test("h: malformed child stdout is a safe protocol failure", async () => {

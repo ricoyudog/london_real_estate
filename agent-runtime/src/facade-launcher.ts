@@ -166,9 +166,10 @@ export class FacadeLauncher {
     let stdoutBytes = 0;
     let stderrBytes = 0;
     let boundaryError: ProtocolBoundaryError | undefined;
+    let cleanup: Promise<void> | undefined;
     const stop = (error: ProtocolBoundaryError) => {
       boundaryError ??= error;
-      void terminateGroup(child);
+      cleanup ??= terminateGroup(child);
     };
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBytes += chunk.byteLength;
@@ -185,13 +186,15 @@ export class FacadeLauncher {
     const timeout = setTimeout(() => stop(new ProtocolBoundaryError("TIMEOUT")), timeoutSeconds * 1_000);
     const cancel = () => stop(new ProtocolBoundaryError("TIMEOUT"));
     cancelEvent?.addEventListener("abort", cancel, { once: true });
+    if (cancelEvent?.aborted) cancel();
     const exitCode = await new Promise<number | null>((resolveExit, rejectExit) => {
       child.once("error", rejectExit);
       child.once("exit", resolveExit);
     });
     clearTimeout(timeout);
     cancelEvent?.removeEventListener("abort", cancel);
-    await terminateGroup(child);
+    cleanup ??= terminateGroup(child);
+    await cleanup;
     if (boundaryError !== undefined) throw boundaryError;
     if (exitCode === null) throw new ProtocolBoundaryError("PROTOCOL_ERROR");
     return {
@@ -249,6 +252,11 @@ async function terminateGroup(child: ChildProcess): Promise<void> {
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
   }
   try { process.kill(-pid, "SIGKILL"); } catch (error) { if (!isMissingProcess(error)) throw error; }
+  const killDeadline = performance.now() + 1_000;
+  while (performance.now() < killDeadline) {
+    try { process.kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw error; }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+  }
 }
 
 function readJson(path: string): JsonObject { return readJsonText(readFileSync(path, "utf8")); }
