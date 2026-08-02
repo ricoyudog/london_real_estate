@@ -5,10 +5,14 @@ updated: 2026-08-01
 
 # Architecture Index
 
-> Structural insights about the codebase. Add entries as architecture knowledge is discovered.
+> Runtime、canonical data plane 與 freshness/read contract 的設計入口。
 
-## Pages
+## Runtime and Data Plane
+
 - [[wiki/architecture/agent-runtime|Agent Runtime Architecture: Pi + Python Data Plane]]
 - [[wiki/architecture/datasource|Datasource Persistence Architecture: Observation + Evidence Store]]
 - [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]]
+
+## Supporting Contracts
+
 - [[wiki/architecture/implicit-contracts|Implicit Contracts]]

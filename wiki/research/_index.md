@@ -5,7 +5,7 @@ updated: 2026-08-01
 
 # Research Index
 
-> Investigation results from corgi explore sessions.
+> 調研來源、legacy coverage 與 source-policy 邊界；正式 operational 狀態以 Decisions 為準。
 
 ## Topics
 
@@ -15,7 +15,7 @@ updated: 2026-08-01
 
 ### Datasource
 
-依照 [[User Requirement]]，目前 **13／13 類均已取得 research-level 可用數據**。
+依照 [[wiki/User Requirement|User Requirement]]，目前 **13／13 類均已取得 research-level 可用數據**。
 這是研究／legacy `SourceResult` coverage，不等於 production canonical coverage 或
 source-policy approval；現時 operational 狀態見
 [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]]。
@@ -26,18 +26,18 @@ source-policy approval；現時 operational 狀態見
 
 | # | 種類 | 狀態 | 已取得的數據形式 |
 | --- | --- | --- | --- |
-| 1 | [[research/datasource/01-office-rent|辦公室租金]] | ✅ 已取得 | 公開報告 `report-derived` |
-| 2 | [[research/datasource/02-office-stock-availability|辦公室存量與可用樓面]] | ✅ 已取得 | VOA API-ready CSV＋公開報告 |
-| 3 | [[research/datasource/03-leasing-transactions|租賃成交]] | ✅ 已取得 | 公開報告的主要交易 |
-| 4 | [[research/datasource/04-supply-pipeline|供應管線]] | ✅ 已取得 | PLD API |
-| 5 | [[research/datasource/05-interest-rates-monetary-policy|利率與貨幣政策]] | ✅ 已取得 | BoE CSV／RSS |
-| 6 | [[research/datasource/06-gdp|GDP]] | ✅ 已取得 | ONS API |
-| 7 | [[research/datasource/07-inflation|通脹]] | ✅ 已取得 | ONS API |
-| 8 | [[research/datasource/08-employment-market|就業市場]] | ✅ 已取得 | ONS／Nomis API |
-| 9 | [[research/datasource/09-corporate-office-demand|企業辦公室需求]] | ✅ 已取得 | Rightmove `proxy` |
-| 10 | [[research/datasource/10-hybrid-working|混合辦公趨勢]] | ✅ 已取得 | ONS survey `proxy` |
-| 11 | [[research/datasource/11-esg-energy-efficiency|ESG 及能源效益]] | ✅ 已取得 | GOV.UK non-domestic EPC `proxy` |
-| 12 | [[research/datasource/12-market-news-events|市場新聞與重大事件]] | ✅ 已取得 | GOV.UK Search／Content API |
-| 13 | [[research/datasource/13-submarket-geography|子市場地理對照]] | ✅ 已取得 | ONSPD／GLA ArcGIS API |
+| 1 | [[wiki/research/datasource/01-office-rent|辦公室租金]] | ✅ 已取得 | 公開報告 `report-derived` |
+| 2 | [[wiki/research/datasource/02-office-stock-availability|辦公室存量與可用樓面]] | ✅ 已取得 | VOA API-ready CSV＋公開報告 |
+| 3 | [[wiki/research/datasource/03-leasing-transactions|租賃成交]] | ✅ 已取得 | 公開報告的主要交易 |
+| 4 | [[wiki/research/datasource/04-supply-pipeline|供應管線]] | ✅ 已取得 | PLD API |
+| 5 | [[wiki/research/datasource/05-interest-rates-monetary-policy|利率與貨幣政策]] | ✅ 已取得 | BoE CSV／RSS |
+| 6 | [[wiki/research/datasource/06-gdp|GDP]] | ✅ 已取得 | ONS API |
+| 7 | [[wiki/research/datasource/07-inflation|通脹]] | ✅ 已取得 | ONS API |
+| 8 | [[wiki/research/datasource/08-employment-market|就業市場]] | ✅ 已取得 | ONS／Nomis API |
+| 9 | [[wiki/research/datasource/09-corporate-office-demand|企業辦公室需求]] | ✅ 已取得 | Rightmove `proxy` |
+| 10 | [[wiki/research/datasource/10-hybrid-working|混合辦公趨勢]] | ✅ 已取得 | ONS survey `proxy` |
+| 11 | [[wiki/research/datasource/11-esg-energy-efficiency|ESG 及能源效益]] | ✅ 已取得 | GOV.UK non-domestic EPC `proxy` |
+| 12 | [[wiki/research/datasource/12-market-news-events|市場新聞與重大事件]] | ✅ 已取得 | GOV.UK Search／Content API |
+| 13 | [[wiki/research/datasource/13-submarket-geography|子市場地理對照]] | ✅ 已取得 | ONSPD／GLA ArcGIS API |
 
 所有已建立的 Python datasource functions 都回傳同一個輕量結構：`category`、`source`、`source_url`、`retrieved_at`、`published_at`、`source_updated_at` 及 `records`。未知日期保留 `null`，不把 observation date 或頁面更新時間冒充首次發布日期。

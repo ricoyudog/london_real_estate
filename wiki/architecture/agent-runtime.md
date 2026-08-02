@@ -264,7 +264,7 @@ Scheduled workflow 可以把已準備好的 typed task 交給 Pi 做 bounded syn
 ## References
 
 - [[wiki/User Requirement|User Requirement]]
-- [[wiki/rearch/UI/chatbot-dashboard-decision|UI Decision: Chatbot Dashboard]]
+- [[chatbot-dashboard-decision|UI Decision: Chatbot Dashboard]]
 - [[wiki/architecture/datasource|Datasource Persistence Architecture]]
 - [[wiki/architecture/data-access-freshness|Data Access and Freshness Architecture]]
 - [[wiki/research/agent-skill-and-tool/skill-and-tool-design|Agent Runtime, Skill and Tool Research]]
