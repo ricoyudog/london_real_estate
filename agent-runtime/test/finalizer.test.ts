@@ -170,3 +170,45 @@ test("finalizeBrief retains separately sourced confidence fields", () => {
   assert.equal(brief.fact_confidence["rate"], "medium");
   assert.equal(brief.inference_confidence["outlook"], "low");
 });
+
+test("finalizeBrief completes an unavailable zero-fact brief with an empty ledger", () => {
+  // Given: unavailable coverage without canonical facts
+  const draft: MarketBriefDraftV1 = { schema_version: "market_brief_draft.v1", title: "Coverage", status: "unavailable", facts: [], inferences: [], limitations: ["No canonical coverage."] };
+
+  // When: the host finalizes against an empty turn ledger
+  const brief = finalizeBrief(draft, new TurnContext(session, defaultTurnLimits));
+
+  // Then: the unavailable coverage artifact is preserved without citations
+  assert.equal(brief.status, "unavailable");
+  assert.deepEqual(brief.sources, []);
+  assert.equal(brief.publication_date_warning, true);
+  assert.match(brief.display_text, /coverage unavailable/i);
+  assert.deepEqual(brief.datasource_confidence, {});
+  assert.deepEqual(brief.fact_confidence, {});
+  assert.deepEqual(brief.inference_confidence, {});
+});
+
+test("finalizeBrief completes a partial zero-fact brief with an empty ledger", () => {
+  // Given: partial coverage without canonical facts
+  const draft: MarketBriefDraftV1 = { schema_version: "market_brief_draft.v1", title: "Coverage", status: "partial", facts: [], inferences: [], limitations: ["No canonical coverage."] };
+
+  // When: the host finalizes against an empty turn ledger
+  const brief = finalizeBrief(draft, new TurnContext(session, defaultTurnLimits));
+
+  // Then: the coverage artifact remains partial without citations
+  assert.equal(brief.status, "partial");
+  assert.deepEqual(brief.sources, []);
+  assert.equal(brief.publication_date_warning, true);
+  assert.match(brief.display_text, /coverage unavailable/i);
+});
+
+test("finalizeBrief rejects fact-bearing briefs with an empty ledger", () => {
+  // Given: a numeric fact with no resolvable ledger anchor
+  const baseline = validDraft();
+  const fact = baseline.facts.at(0);
+  assert.ok(fact !== undefined);
+  const draft: MarketBriefDraftV1 = { ...baseline, facts: [fact], inferences: [] };
+
+  // When/Then: fact-bearing drafts retain the unresolved-reference rejection
+  assert.throws(() => finalizeBrief(draft, new TurnContext(session, defaultTurnLimits)), (error: unknown) => error instanceof DraftRejected && error.code === "UNRESOLVED_REF");
+});

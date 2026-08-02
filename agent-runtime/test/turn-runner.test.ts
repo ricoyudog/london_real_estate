@@ -22,6 +22,11 @@ test("(k) an ambiguous request clarifies with zero calls", async () => { const r
 test("(l) latest has a time anchor and prompts Pi", async () => { const runtime = fake(async () => undefined); await run(runtime); assert.equal(runtime.prompts, 1); assert.equal(requiresClarification("latest bank rate"), false); });
 test("(m) continuation reuses its original context and deadline", async () => { const runtime = fake(async () => undefined); const outcome = await run(runtime); const turn = outcome.turn; runtime.advance(1_000); const remaining = turn.getDeadlineRemainingMs(); const resumed = await resumeTurn(runtime.booted, outcome); assert.equal(resumed.turn, turn); assert.equal(turn.getDeadlineRemainingMs(), remaining); });
 test("(n) split numeric model text fails without an artifact", async () => { const runtime = fake(async (_driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); }); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.artifact, undefined); });
+test("(o) analysis questions default to the latest canonical data", () => { assert.equal(requiresClarification("How might UK interest rates affect London office rents?"), false); });
+test("(p) value lookups without a time anchor still clarify", () => { assert.equal(requiresClarification("What is the Bank of England base rate?"), true); });
+test("(q) latest value lookups do not clarify", () => { assert.equal(requiresClarification("Show the latest Bank Rate"), false); });
+test("(r) analysis markers do not require a time anchor", () => { assert.equal(requiresClarification("How does inflation influence office demand?"), false); });
+test("(s) natural-language dates do not require clarification", () => { assert.equal(requiresClarification("What was the rate in January 2026?"), false); });
 
 type Driver = { readonly call: (toolName: string, args: unknown) => Promise<void> };
 type Policy = { readonly preToolCall?: (toolName: string, args: unknown, turn: TurnContext) => ToolResult | undefined; readonly onResult?: (toolName: string, result: ToolResult, turn: TurnContext) => void };

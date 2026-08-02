@@ -94,7 +94,7 @@ export type MarketBriefV1 = {
   readonly facts: readonly HydratedFact[];
   readonly inferences: readonly InferenceDraft[];
   readonly limitations: readonly string[];
-  readonly as_of: string;
+  readonly as_of: string | null;
   readonly sources: readonly { readonly citation_ref: string; readonly source: string; readonly published_at: string | null }[];
   readonly lineage: Readonly<Record<string, { readonly observation_ids: readonly string[]; readonly citation_refs: readonly string[] }>>;
   readonly freshness_warnings: readonly string[];
@@ -207,7 +207,7 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
   const draft = parseDraft(input);
   guardModelText(draft);
   const ledger = hostLedger(turn);
-  if (ledger.anchor_as_of === null) throw new DraftRejected("UNRESOLVED_REF");
+  if (ledger.anchor_as_of === null && draft.facts.length > 0) throw new DraftRejected("UNRESOLVED_REF");
   const references = resolveReferences(draft, ledger);
   const sources = [...references.values()].map(({ ref, projection }) => ({
     citation_ref: ref,
@@ -256,7 +256,7 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
     datasource_confidence: datasourceConfidence,
     fact_confidence: factConfidence,
     inference_confidence: inferenceConfidence,
-    display_text: renderDisplayText(draft.title, publication_date_warning),
+    display_text: renderDisplayText(draft.title, publication_date_warning, draft.facts.length === 0),
   };
 };
 
@@ -413,5 +413,7 @@ const requiredResolution = (references: ReadonlyMap<string, CitationResolution>,
   if (resolution === undefined) throw new DraftRejected("UNRESOLVED_REF", ref);
   return resolution;
 };
-const renderDisplayText = (title: string, publicationDateWarning: boolean): string =>
-  publicationDateWarning ? `${title}. Publication date unavailable.` : title;
+const renderDisplayText = (title: string, publicationDateWarning: boolean, coverageUnavailable: boolean): string => {
+  if (coverageUnavailable) return `${title}. Coverage unavailable.`;
+  return publicationDateWarning ? `${title}. Publication date unavailable.` : title;
+};

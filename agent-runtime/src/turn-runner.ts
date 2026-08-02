@@ -32,10 +32,11 @@ type RunnerState = {
 };
 
 const states = new WeakMap<TurnContext, RunnerState>();
+const timeAnchor = /\b(?:latest|current|today|yesterday|last\s+(?:month|week|year))\b|\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?\b|\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i;
+const analysisQuestion = /\b(?:affect|impact|drive|influence|outlook|implication|why|how\s+(?:would|might|does|do|will|should|could))\b/i;
 
-export function requiresClarification(userMessage: string): boolean {
-  return !/\b(?:latest|current|today|yesterday|last\s+(?:month|week|year))\b|\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?\b/i.test(userMessage);
-}
+export const isAnalysisQuestion = (userMessage: string): boolean => analysisQuestion.test(userMessage);
+export const requiresClarification = (userMessage: string): boolean => !timeAnchor.test(userMessage) && !isAnalysisQuestion(userMessage);
 
 export function cancelTurn(booted: BootedRuntime): void {
   booted.getTurnContext()?.requestCancel();
