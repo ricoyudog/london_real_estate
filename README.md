@@ -112,6 +112,7 @@ cd agent-runtime
 npm test
 npm run typecheck
 npm run test:browser
+npm audit --omit=dev
 ```
 
 With a configured private `.env`, `npm run test:glm` performs the opt-in real

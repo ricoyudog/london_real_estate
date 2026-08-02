@@ -51,7 +51,8 @@ The Phase 2 deterministic runner derives the following rules from this catalog:
 | Gate | Result |
 |---|---|
 | Python offline suite | `387 passed, 15 deselected`；包含 time-safe submarket promotion 與 demo initializer/Compose contracts。 |
-| Node unit/integration | `181` tests；`179 passed, 2 skipped, 0 failed`，nested fixtures 已納入 `npm test`；`npm run typecheck` 通過。 |
+| Node unit/integration | `182` tests；`180 passed, 2 skipped, 0 failed`，nested fixtures 已納入 `npm test`；`npm run typecheck` 通過。 |
+| Production dependency audit | clean `npm ci` 後 Pi minimatch 實際 resolve `brace-expansion@5.0.9`，nested vulnerable copy 不存在；`npm audit --omit=dev` 為 `0 vulnerabilities`。 |
 | Browser regression | `9 passed`；涵蓋 session/reload cleanup、seeded/empty/stale overview、suggested prompts、中文/英文/多行/4000 字、double submit、16-turn limit、failure-after-success、cancel/retry、SSE replay、responsive、keyboard、reduced motion 與 axe。 |
 | Real model CLI | `npm run test:glm` 使用 private `.env` 的 `glm/GLM-5.2` 通過；沒有 `modelsOverride` 或 fake session factory。模型曾在 host budget 內重試 finalizer，仍保留 `query_market_data → get_citation_metadata → finalize_market_brief` 序列。 |
 | Docker lifecycle | fresh `down -v → up --build --wait` 自動 seed；`down → up --wait` 回報 marker `verified` 且不重複 seed；non-demo mode 遇 marker fail closed。 |

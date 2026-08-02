@@ -17,7 +17,7 @@ updated: 2026-08-02
 - The same-origin UI exposes fixture/runtime identity, cancel/retry, authenticated pagehide cleanup, safe failures, freshness/publication/confidence/lineage/source links, and no approval controls or streaming model facts.
 - Real `glm/GLM-5.2` passed CLI and in-app browser acceptance through Pi `createAgentSession`, typed Facade tools, SQLite canonical data and the host finalizer. Bank Rate completed with citation lineage; overview was partial; West End vacancy was unavailable without a fabricated number.
 - Cancel now races a stalled Pi prompt, aborts promptly, skips late lifecycle projection, records `terminal_state: cancelled`, releases the turn, and accepts an immediate retry.
-- Final deterministic gates: Python `387 passed, 15 deselected`; Node `181` tests (`179 passed, 2 skipped`), typecheck green; Playwright/axe `9 passed`; real-model gate passed; wheel/deck/Docker verification recorded in `tests/Test case.md` and `wiki/questions/Test_result/`.
+- Final deterministic gates: Python `387 passed, 15 deselected`; Node `182` tests (`180 passed, 2 skipped`), typecheck and production dependency audit green; Playwright/axe `9 passed`; real-model gate passed; wheel/deck/Docker verification recorded in `tests/Test case.md` and `wiki/questions/Test_result/`.
 - Preserved and visually verified the final six-slide architecture/demo PPTX; removed its generated inspect dump, duplicate test catalog and unreferenced screenshot.
 
 ## Done (historical)
@@ -44,7 +44,7 @@ updated: 2026-08-02
 - Linux cannot execute the normal fixture ingestion command because parser isolation correctly requires macOS `sandbox-exec`. Docker demo seed accepts only the checksum-pinned packaged fixture and persists it through the trusted `OperationalStore` boundary; arbitrary evidence parsing remains forbidden.
 
 ## New Discoveries
-- The offline Python gate collects 402 tests and runs 387 after marker exclusion; Node's top-level and nested fixtures total 181 tests.
+- The offline Python gate collects 402 tests and runs 387 after marker exclusion; Node's top-level and nested fixtures total 182 tests.
 - Legacy `SourceResult` float／`+00:00` contracts need adapters while persisted v1 uses decimal strings／`Z`.
 - There is no safe claim of complete PLD future supply until multi-window pagination/detail reconciliation and source rights both pass.
 - Existing codebase is richer than the memory templates assumed: `wiki/research/datasource/` has 13 numbered research notes, plus `wiki/User Requirement.md`, `wiki/Technical Test for Forward Deployed Engineer.pdf`, and `wiki/rearch/UI/chatbot-dashboard-decision.md`. These all committed cleanly.

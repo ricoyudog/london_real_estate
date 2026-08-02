@@ -22,7 +22,9 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable --no-cache
 
 COPY agent-runtime/package.json agent-runtime/package-lock.json ./agent-runtime/
-RUN npm ci --prefix agent-runtime --omit=dev
+COPY agent-runtime/scripts ./agent-runtime/scripts
+RUN npm ci --prefix agent-runtime --omit=dev --audit=false
+RUN npm audit --prefix agent-runtime --omit=dev
 
 COPY agent-runtime/src ./agent-runtime/src
 COPY agent-runtime/public ./agent-runtime/public
