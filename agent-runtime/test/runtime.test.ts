@@ -100,12 +100,49 @@ test("f: lifecycle reducer rejects a second terminal event", () => {
   assert.throws(() => reducer.transition({ type: "turn.failed" }), StateTransitionError);
 });
 
-test("g: lifecycle reducer requires final artifact before completion", () => {
+test("g: lifecycle reducer requires final artifact before successful completion", () => {
   // Given: a running reducer
   const reducer = new LifecycleReducer();
   reducer.transition({ type: "turn.started" });
 
-  // When/Then: terminal completion cannot precede its artifact
+  // When/Then: successful completion cannot precede its artifact
+  assert.throws(
+    () => reducer.transition({ type: "turn.completed", terminal_state: "completed" }),
+    StateTransitionError,
+  );
+});
+
+test("lifecycle reducer allows cancelled terminal without artifact", () => {
+  // Given: a started turn without a final artifact
+  const reducer = new LifecycleReducer();
+  reducer.transition({ type: "turn.started" });
+
+  // When: cancellation reaches the terminal event
+  reducer.transition({ type: "turn.completed", terminal_state: "cancelled" });
+
+  // Then: it terminates without fabricating an artifact
+  assert.equal(reducer.state(), "cancelled");
+  assert.equal(reducer.events().filter((event) => event.type === "turn.completed").length, 1);
+});
+
+test("lifecycle reducer allows failed terminal without artifact", () => {
+  // Given: a started turn without a final artifact
+  const reducer = new LifecycleReducer();
+  reducer.transition({ type: "turn.started" });
+
+  // When: it reaches the failed terminal event
+  reducer.transition({ type: "turn.failed" });
+
+  // Then: it records failure without fabricating an artifact
+  assert.equal(reducer.state(), "failed");
+});
+
+test("lifecycle reducer still rejects completed terminal without artifact", () => {
+  // Given: a started turn without a final artifact
+  const reducer = new LifecycleReducer();
+  reducer.transition({ type: "turn.started" });
+
+  // When/Then: successful completion is still rejected
   assert.throws(
     () => reducer.transition({ type: "turn.completed", terminal_state: "completed" }),
     StateTransitionError,

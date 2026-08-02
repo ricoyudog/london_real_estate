@@ -331,14 +331,17 @@ export class LifecycleReducer {
         this.#hasFinalArtifact = true;
         return;
       case "turn.completed":
-        if (!this.#hasStarted || !this.#hasFinalArtifact) {
+        if (
+          !this.#hasStarted ||
+          (event.terminal_state === "completed" && !this.#hasFinalArtifact)
+        ) {
           throw new StateTransitionError(event.type, this.#state);
         }
         this.#state = event.terminal_state;
         this.#terminal = true;
         return;
       case "turn.failed":
-        if (!this.#hasStarted || !this.#hasFinalArtifact) {
+        if (!this.#hasStarted) {
           throw new StateTransitionError(event.type, this.#state);
         }
         this.#state = "failed";
