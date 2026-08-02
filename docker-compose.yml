@@ -1,23 +1,54 @@
 services:
+  demo-data-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      CRE_DATA_DIR: /data
+      MARKET_DESK_MODE: "${MARKET_DESK_MODE:-demo}"
+    command:
+      - python
+      - /app/demo/init_demo_data.py
+      - --data-dir
+      - /data
+      - --fixture
+      - /app/demo/fixtures/bank-rate-v1.csv
+    volumes:
+      - market-desk-demo-data:/data
+    restart: "no"
+
   market-desk:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8787:8787"
+    depends_on:
+      demo-data-init:
+        condition: service_completed_successfully
+    env_file:
+      - ./agent-runtime/.env
     environment:
       CRE_DATA_DIR: /data
+      DEMO_FIXTURE_LABEL: Deterministic Bank Rate fixture
       HOST: 0.0.0.0
+      MARKET_DESK_MODE: "${MARKET_DESK_MODE:-demo}"
       PORT: "8787"
-      PI_MODEL: "${PI_MODEL:?PI_MODEL must be set in the deployment environment}"
-      PI_BASE_URL: "${PI_BASE_URL:?PI_BASE_URL must be set in the deployment environment}"
-      PI_API_KEY: "${PI_API_KEY:?PI_API_KEY must be set in the deployment environment}"
+    ports:
+      - "127.0.0.1:8787:8787"
     volumes:
-      - "${CRE_DATA_VOLUME:-cre-data}:/data"
+      - market-desk-demo-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8787/').then(response=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
     restart: unless-stopped
 
-# This persistent volume may be empty initially: startup migration creates only
-# its schema. Seed canonical data on a supported macOS ingestion host; Linux
-# Docker must not run `cre daemon` because sandbox-exec is unavailable.
+# Dedicated to the deterministic fixture demo. Live acquisition remains a
+# macOS-host responsibility because parser isolation depends on sandbox-exec.
 volumes:
-  cre-data:
+  market-desk-demo-data:

@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import process from "node:process";
 
 import { createApp } from "./app.ts";
@@ -6,6 +7,12 @@ import { createApp } from "./app.ts";
 const creDataDir = resolve(requiredEnv("CRE_DATA_DIR"));
 const port = portFrom(process.env.PORT);
 const host = process.env.HOST?.trim() || "127.0.0.1";
+const mode = deploymentMode(process.env.MARKET_DESK_MODE);
+const demoMarker = join(creDataDir, ".nan-fung-demo-data.v1.json");
+
+if (mode !== "demo" && existsSync(demoMarker)) {
+  throw new Error("demo marker cannot be opened outside demo mode");
+}
 
 requiredEnv("PI_MODEL");
 requiredEnv("PI_BASE_URL");
@@ -17,9 +24,13 @@ const app = await createApp({
     capability_scope_id: "dashboard-bootstrap",
     allowed_access_classes: ["open"],
     allowed_capability_ids: ["uk.bank-rate-current"],
-    allowed_refresh_profiles: ["bank-rate-latest"],
+    allowed_refresh_profiles: mode === "demo" ? [] : ["bank-rate-latest"],
   },
   creDataDir,
+  deployment: {
+    mode,
+    fixture_label: mode === "demo" ? process.env.DEMO_FIXTURE_LABEL?.trim() || "Deterministic Bank Rate fixture" : null,
+  },
 });
 
 await new Promise<void>((resolveListen, rejectListen) => {
@@ -55,4 +66,10 @@ function portFrom(value: string | undefined): number {
   const port = Number(value);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("PORT must be an integer from 1 to 65535");
   return port;
+}
+
+function deploymentMode(value: string | undefined): "demo" | "production" {
+  const mode = value?.trim() || "production";
+  if (mode === "demo" || mode === "production") return mode;
+  throw new Error("MARKET_DESK_MODE must be demo or production");
 }

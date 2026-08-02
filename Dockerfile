@@ -28,12 +28,13 @@ COPY agent-runtime/src ./agent-runtime/src
 COPY agent-runtime/public ./agent-runtime/public
 COPY agent-runtime/skills.manifest.json ./agent-runtime/skills.manifest.json
 COPY skills ./skills
+COPY demo ./demo
 
 # This Linux image is read/runtime only. Canonical ingestion requires macOS
 # sandbox-exec parser isolation, so never run `cre daemon` from this container.
 VOLUME ["/data"]
 EXPOSE 8787
 
-# The migration is idempotent and makes a fresh volume structurally valid; it
-# does not ingest observations. exec keeps the Node server as PID 1.
-CMD ["sh", "-c", "cre --data-dir \"$CRE_DATA_DIR\" db migrate && exec npm --prefix /app/agent-runtime run serve"]
+# Compose gates this service on the one-shot demo initializer. exec keeps the
+# Node server as PID 1; no ingestion daemon runs in this Linux image.
+CMD ["npm", "--prefix", "/app/agent-runtime", "run", "serve"]
