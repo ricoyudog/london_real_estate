@@ -1,9 +1,10 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1_000;
 const DEFAULT_MAX_SESSIONS = 8;
 const MAX_TURNS = 16;
 const MAX_RECOVERY_RECORDS = 32;
+const GENERATION_DOMAIN = "nan-fung/gen/v1";
 
 export type SessionStatus = "active" | "expired" | "gone";
 
@@ -65,7 +66,8 @@ export class SessionRegistry {
 
     const bearer = randomBytes(32).toString("base64url");
     const bearer_hash = hashBearer(bearer);
-    const id = `${this.generation_key.toString("base64url")}.${randomBytes(16).toString("base64url")}`;
+    const nonce = randomBytes(16);
+    const id = `${generationTag(this.generation_key, nonce).toString("base64url")}.${nonce.toString("base64url")}`;
     const expires_at_ms = this.#now() + IDLE_TIMEOUT_MS;
     this.#sessions.set(id, {
       principal: options.principal,
@@ -136,11 +138,11 @@ export class SessionRegistry {
   isPreRestartId(id: string): boolean {
     const parts = id.split(".");
     if (parts.length !== 2 || parts[0] === undefined || parts[1] === undefined) return false;
-    const generation = decodeBase64url(parts[0]);
+    const tag = decodeBase64url(parts[0]);
     const nonce = decodeBase64url(parts[1]);
-    return generation?.byteLength === this.generation_key.byteLength
+    return tag?.byteLength === 16
       && nonce?.byteLength === 16
-      && !timingSafeEqual(generation, this.generation_key);
+      && !timingSafeEqual(tag, generationTag(this.generation_key, nonce));
   }
 
   #activeSession(id: string):
@@ -163,11 +165,11 @@ export class SessionRegistry {
   #isCurrentGenerationId(id: string): boolean {
     const parts = id.split(".");
     if (parts.length !== 2 || parts[0] === undefined || parts[1] === undefined) return false;
-    const generation = decodeBase64url(parts[0]);
+    const tag = decodeBase64url(parts[0]);
     const nonce = decodeBase64url(parts[1]);
-    return generation?.byteLength === this.generation_key.byteLength
+    return tag?.byteLength === 16
       && nonce?.byteLength === 16
-      && timingSafeEqual(generation, this.generation_key);
+      && timingSafeEqual(tag, generationTag(this.generation_key, nonce));
   }
 
   #expireIdleSessions(): void {
@@ -191,6 +193,10 @@ class ScopeReusedError extends Error {
 
 function hashBearer(bearer: string): string {
   return createHash("sha256").update(bearer).digest("hex");
+}
+
+function generationTag(key: Buffer, nonce: Buffer): Buffer {
+  return createHmac("sha256", key).update(GENERATION_DOMAIN).update(nonce).digest().subarray(0, 16);
 }
 
 function decodeBase64url(value: string): Buffer | undefined {

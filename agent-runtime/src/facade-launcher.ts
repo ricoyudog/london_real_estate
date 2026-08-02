@@ -173,11 +173,20 @@ export class FacadeLauncher {
     let stdoutBytes = 0;
     let stderrBytes = 0;
     let boundaryError: ProtocolBoundaryError | undefined;
-    let cleanupError: unknown;
     let cleanup: Promise<void> | undefined;
+    let settleCleanup: (outcome: { readonly ok: true } | { readonly ok: false; readonly error: unknown }) => void = () => {};
+    const cleanupSettled = new Promise<{ readonly ok: true } | { readonly ok: false; readonly error: unknown }>((resolvePromise) => {
+      settleCleanup = resolvePromise;
+    });
     const stop = (error: ProtocolBoundaryError) => {
       boundaryError ??= error;
-      cleanup ??= terminateGroup(child, this.#kill).catch((failure) => { cleanupError = failure; });
+      if (cleanup === undefined) {
+        cleanup = terminateGroup(child, this.#kill);
+        cleanup.then(
+          () => settleCleanup({ ok: true }),
+          (cleanupError: unknown) => settleCleanup({ ok: false, error: cleanupError }),
+        );
+      }
     };
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBytes += chunk.byteLength;
@@ -195,15 +204,30 @@ export class FacadeLauncher {
     const cancel = () => stop(new ProtocolBoundaryError("TIMEOUT"));
     cancelEvent?.addEventListener("abort", cancel, { once: true });
     if (cancelEvent?.aborted) cancel();
-    const exitCode = await new Promise<number | null>((resolveExit, rejectExit) => {
+    const childExit = new Promise<number | null>((resolveExit, rejectExit) => {
       child.once("error", rejectExit);
       child.once("exit", resolveExit);
     });
+    const outcome = await Promise.race([
+      childExit.then((code) => ({ kind: "exit" as const, code })),
+      cleanupSettled.then((settled) => ({ kind: "cleanup" as const, settled })),
+    ]);
+    if (outcome.kind === "cleanup" && !outcome.settled.ok) {
+      clearTimeout(timeout);
+      cancelEvent?.removeEventListener("abort", cancel);
+      await backstopReap(child);
+      throw outcome.settled.error;
+    }
+    const exitCode = outcome.kind === "exit" ? outcome.code : await childExit;
     clearTimeout(timeout);
     cancelEvent?.removeEventListener("abort", cancel);
-    cleanup ??= terminateGroup(child, this.#kill).catch((failure) => { cleanupError = failure; });
-    await cleanup;
-    if (cleanupError !== undefined) throw new ProtocolBoundaryError("PROTOCOL_ERROR");
+    if (cleanup === undefined) cleanup = terminateGroup(child, this.#kill);
+    try { await cleanup; } catch (error) {
+      clearTimeout(timeout);
+      cancelEvent?.removeEventListener("abort", cancel);
+      await backstopReap(child);
+      throw error;
+    }
     if (boundaryError !== undefined) throw boundaryError;
     if (exitCode === null) throw new ProtocolBoundaryError("PROTOCOL_ERROR");
     return {
@@ -268,6 +292,19 @@ async function terminateGroup(child: ChildProcess, kill: typeof process.kill): P
   }
   try { kill(-pid, 0); } catch (error) { if (isMissingProcess(error)) return; throw new CleanupError("process group liveness probe failed", { cause: error }); }
   throw new CleanupError("process group survived SIGKILL deadline");
+}
+
+async function backstopReap(child: ChildProcess): Promise<void> {
+  child.kill("SIGKILL");
+  const pid = child.pid;
+  if (pid !== undefined) {
+    try { process.kill(-pid, "SIGKILL"); } catch (error) { if (!(error instanceof Error)) throw error; }
+  }
+  await Promise.race([
+    new Promise<void>((resolvePromise) => child.once("exit", () => resolvePromise())),
+    new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 250)),
+  ]);
+  for (const stream of [child.stdin, child.stdout, child.stderr, ...child.stdio.slice(3)]) stream?.destroy();
 }
 
 function readJson(path: string): JsonObject { return readJsonText(readFileSync(path, "utf8")); }

@@ -238,7 +238,10 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
     const factRefs = fact.kind === "numeric" ? [fact.numeric_citation_ref] : fact.supporting_citation_refs;
     const resolution = requiredResolution(references, factRefs[0]);
     datasourceConfidence[fact.claim_id] = resolution.projection.datasource_confidence;
-    lineage[fact.claim_id] = { observation_ids: resolution.entry.observation_ids, citation_refs: factRefs };
+    lineage[fact.claim_id] = {
+      observation_ids: [...new Set(factRefs.flatMap((ref) => requiredResolution(references, ref).entry.observation_ids))],
+      citation_refs: factRefs,
+    };
     if (fact.kind === "qualitative") return fact;
     return {
       claim_id: fact.claim_id,

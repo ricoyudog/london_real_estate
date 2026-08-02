@@ -59,7 +59,8 @@ test("c: IDs authenticate the current runtime generation", () => {
   const registryToUse = registry(1_000, generationKey);
   const createdSession = created(registryToUse);
 
-  assert.equal(createdSession.handle.id.split(".")[0], generationKey.toString("base64url"));
+  assert.equal(createdSession.handle.id.includes(generationKey.toString("base64url")), false);
+  assert.equal(Buffer.from(createdSession.handle.id.split(".")[0] ?? "", "base64url").byteLength, 16);
   assert.equal(registryToUse.status(createdSession.handle.id), "active");
   assert.equal(registryToUse.isPreRestartId(createdSession.handle.id), false);
 });
@@ -73,6 +74,9 @@ test("d: malformed and deleted IDs are gone but not pre-restart", () => {
   assert.equal(registryToUse.isPreRestartId(createdSession.handle.id), false);
   assert.equal(registryToUse.status("bad.id.with.parts"), "gone");
   assert.equal(registryToUse.isPreRestartId("bad.id.with.parts"), false);
+  const forged = `${randomBytes(16).toString("base64url")}.${randomBytes(16).toString("base64url")}`;
+  assert.equal(registryToUse.status(forged), "gone");
+  assert.equal(registryToUse.isPreRestartId(forged), true);
 });
 
 test("e: idle expiry rejects authentication and tombstones scope", () => {

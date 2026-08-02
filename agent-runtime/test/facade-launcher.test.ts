@@ -213,28 +213,31 @@ test("n: EPERM during process-group cleanup becomes a typed protocol failure", a
   assert.equal(result.error?.code, "PROTOCOL_ERROR");
 });
 
-test("o: cancellation cleanup failure takes precedence over timeout", async () => {
+test("o: timeout cleanup failure settles and reaps the child without an external kill", async () => {
   // Given: a running process group whose injected containment kill is denied
   const dataDir = migratedStore();
-  const controller = new AbortController();
   const deniedKill: typeof process.kill = (_pid, _signal) => {
     const error = new Error("operation not permitted");
     Object.assign(error, { code: "EPERM" });
     throw error;
   };
-  const invocation = withHelper(dataDir, deniedKill).invoke("describe_market_data", request("call_cancel"), { cancelEvent: controller.signal });
-  const pids = await waitForPidFile(join(dataDir, "call_cancel.pids"));
+  const invocation = withHelper(dataDir, deniedKill).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 1 });
+  const pids = await waitForPidFile(join(dataDir, "call_timeout.pids"));
   const groupLeader = pids[0];
   assert.ok(groupLeader !== undefined);
 
-  // When: cancellation and failed cleanup happen together
-  controller.abort();
-  process.kill(-groupLeader, "SIGKILL");
-  const result = await invocation;
+  // When: timeout and failed cleanup happen together
+  const result = await Promise.race([
+    invocation,
+    new Promise<"TIMEOUT">((resolvePromise) => setTimeout(() => resolvePromise("TIMEOUT"), 2_000)),
+  ]);
 
-  // Then: the more severe cleanup failure is not masked as a timeout
+  // Then: the more severe cleanup failure settles without an external kill
+  assert.notEqual(result, "TIMEOUT");
+  if (result === "TIMEOUT") assert.fail("invocation did not settle after cleanup failed");
   assert.equal(result.status, "error");
   assert.equal(result.error?.code, "PROTOCOL_ERROR");
+  await waitForGone(pids);
 });
 
 test("p: process group observable after the SIGKILL deadline is a typed cleanup failure", async () => {
@@ -245,9 +248,14 @@ test("p: process group observable after the SIGKILL deadline is a typed cleanup 
   };
 
   // When: cleanup exhausts both termination deadlines
-  const result = await withHelper(migratedStore(), persistentKill).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 0.01 });
+  const result = await Promise.race([
+    withHelper(migratedStore(), persistentKill).invoke("describe_market_data", request("call_timeout"), { timeoutSeconds: 0.01 }),
+    new Promise<"TIMEOUT">((resolvePromise) => setTimeout(() => resolvePromise("TIMEOUT"), 3_000)),
+  ]);
 
-  // Then: persistent descendants are surfaced as a protocol failure
+  // Then: persistent descendants are surfaced as a bounded protocol failure
+  assert.notEqual(result, "TIMEOUT");
+  if (result === "TIMEOUT") assert.fail("persistent-group cleanup did not settle");
   assert.equal(result.status, "error");
   assert.equal(result.error?.code, "PROTOCOL_ERROR");
 });

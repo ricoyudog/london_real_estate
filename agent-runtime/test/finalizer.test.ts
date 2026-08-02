@@ -88,11 +88,11 @@ test("finalizeBrief keeps numeric and qualitative citations on their own record 
   const turn = new TurnContext(session, defaultTurnLimits);
   for (const [observation, citation, value] of [["observation-a", "citation-a", "5.25"], ["observation-b", "citation-b", "6.50"]] as const) {
     turn.addLedgerEntry({
-      kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", observation_ids: [observation], citation_refs: [citation],
+      kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", observation_ids: [observation, "observation-shared"], citation_refs: [citation],
       numeric_projection: { value, unit: "percent", definition: `Bank Rate ${value}`, as_of: "2026-08-01", source_date: "2026-08-01", period_label: value },
     });
     turn.addLedgerEntry({
-      kind: "citation", anchor_as_of: "2026-08-02T00:00:00Z", observation_ids: [observation], citation_refs: [citation],
+      kind: "citation", anchor_as_of: "2026-08-02T00:00:00Z", observation_ids: [observation, "observation-shared"], citation_refs: [citation],
       numeric_projection: { published_at: `${value}Z`, datasource_confidence: value === "6.50" ? "medium" : "high", source: `Publisher ${value}` },
     });
   }
@@ -111,8 +111,9 @@ test("finalizeBrief keeps numeric and qualitative citations on their own record 
   // Then: record B keeps its own numeric value and both refs remain distinct
   assert.equal(brief.facts[0]?.numeric_value, "6.50");
   assert.equal(brief.facts[0]?.numeric_definition, "Bank Rate 6.50");
-  assert.deepEqual(brief.lineage["numeric-b"]?.observation_ids, ["observation-b"]);
+  assert.deepEqual(brief.lineage["numeric-b"]?.observation_ids, ["observation-b", "observation-shared"]);
   assert.deepEqual(brief.lineage["qualitative"]?.citation_refs, ["citation-a", "citation-b"]);
+  assert.deepEqual(brief.lineage["qualitative"]?.observation_ids, ["observation-a", "observation-shared", "observation-b"]);
   assert.deepEqual(brief.sources.map((source) => source.source), ["Publisher 6.50", "Publisher 5.25"]);
 });
 
