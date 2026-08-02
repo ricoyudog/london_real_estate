@@ -1,3 +1,0 @@
-Commit message: fix(agent-runtime): per-record citation lineage, resumeTurn-driven approval continuation, strict real-model smoke, ESRCH-only cleanup
-Scoped change: runtime implementation, direct regression tests, and task-f2-fix evidence only.
-Final commit hash and stat were verified immediately after commit and reported in the completion response.

@@ -1,4 +1,0 @@
-Command: npx tsc --noEmit
-Result: exit 0, no diagnostics.
-
-LSP note: the TypeScript language server is not installed and installation was previously declined; `tsc --noEmit` is the authoritative compiler check.

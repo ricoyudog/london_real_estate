@@ -1,2 +1,0 @@
-Command: rg -n 'sk-bed3a' --glob '*.ts' --glob '*.json' --glob '*.md' --glob '!node_modules/**' .
-Result: no matches.
