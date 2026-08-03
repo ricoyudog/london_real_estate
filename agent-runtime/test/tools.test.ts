@@ -11,7 +11,7 @@ import { TurnContext, defaultTurnLimits, type SessionContext } from "../src/runt
 import { createSessionTools, modelVisibleBytes } from "../src/tools.ts";
 import Schema from "typebox/schema";
 
-const mainCheckoutRoot = "/Users/chunsingyu/softwares/nan_fung";
+const mainCheckoutRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const fixtures = JSON.parse(
   readFileSync(join(mainCheckoutRoot, "tests/fixtures/agent_tools/v1/tool-contract-fixtures.json"), "utf8"),
 ) as {

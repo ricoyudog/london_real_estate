@@ -69,7 +69,7 @@ Run the opt-in live GLM gate with the local `.env`:
 npm run test:glm
 ```
 
-The fixtures cover ambiguous dates, explicit historical values, fresh latest values, successful refresh, failed refresh, absent canonical coverage, and blocked TC-01 coverage. Gate evidence and manifests live under `test/.evidence/gate-{2a,2b,2c}/`.
+The fixtures cover ambiguous dates, explicit historical values, fresh latest values, successful refresh, failed refresh, absent canonical coverage, and blocked TC-01 coverage. Generated, gitignored manifests live under `test/.evidence/fixtures/` and `test/.evidence/integration-2b/`; the sanitized release result is recorded in `../tests/Test case.md`.
 
 ## Production vs Test Policy
 

@@ -19,11 +19,16 @@ if (packageVersion(fixedPackage) !== fixedVersion) {
   throw new Error(`expected top-level brace-expansion ${fixedVersion}`);
 }
 
-for (const [path, expectedVersion] of [[nestedPackage, "5.0.7"], [nestedDependency, "4.0.4"]]) {
+for (const [path, expectedVersions] of [
+  [nestedPackage, ["5.0.7", fixedVersion]],
+  [nestedDependency, ["4.0.4"]],
+]) {
   if (!existsSync(path)) continue;
   const stat = lstatSync(path);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("unexpected nested dependency path");
-  if (packageVersion(path) !== expectedVersion) throw new Error(`unexpected nested dependency ${path}`);
+  if (!expectedVersions.includes(packageVersion(path))) {
+    throw new Error(`unexpected nested dependency ${path}`);
+  }
 }
 
 const shrinkwrap = JSON.parse(readFileSync(shrinkwrapPath, "utf8"));
@@ -31,7 +36,7 @@ const packages = shrinkwrap.packages;
 if (packages === null || typeof packages !== "object") throw new Error("invalid Pi shrinkwrap packages");
 const braceEntry = packages["node_modules/brace-expansion"];
 const balancedEntry = packages["node_modules/balanced-match"];
-if (braceEntry !== undefined && braceEntry.version !== "5.0.7") {
+if (braceEntry !== undefined && !["5.0.7", fixedVersion].includes(braceEntry.version)) {
   throw new Error("unexpected Pi brace-expansion shrinkwrap entry");
 }
 if (balancedEntry !== undefined && balancedEntry.version !== "4.0.4") {
