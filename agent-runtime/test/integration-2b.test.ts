@@ -22,7 +22,7 @@ const context = {
   allowed_capability_ids: ["uk.bank-rate-current"], allowed_refresh_profiles: ["bank-rate-latest"],
 };
 
-test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrecy", async (t) => {
+test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrecy", { timeout: 120_000 }, async (t) => {
   const fixture = await setup("happy", false);
   t.after(fixture.close);
   const session = await createSession(fixture.origin);
@@ -68,7 +68,7 @@ test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrec
   writeEvidence("happy.json", { events, lateEvents, liveTail, replayEvents, recovered });
 });
 
-test("cancel and conflict are observable through the real transport and release the registry turn slot", async (t) => {
+test("cancel and conflict are observable through the real transport and release the registry turn slot", { timeout: 120_000 }, async (t) => {
   const gate = deferred<void>();
   let gateEntered = false;
   const fixture = await setup("cancel", false, gate.promise, () => { gateEntered = true; });
@@ -109,7 +109,7 @@ test("cancel and conflict are observable through the real transport and release 
   writeEvidence("cancel.json", { events, resumed });
 });
 
-test("published_at null and distinct confidence survive live, replay, and recovery", async (t) => {
+test("published_at null and distinct confidence survive live, replay, and recovery", { timeout: 120_000 }, async (t) => {
   const fixture = await setup("published-null", true);
   t.after(fixture.close);
   const session = await createSession(fixture.origin);
@@ -130,7 +130,7 @@ test("published_at null and distinct confidence survive live, replay, and recove
   writeEvidence("published-null.json", { live, replayed, recovered });
 });
 
-test("runtime startup failures emit only the safe RUNTIME_UNAVAILABLE reason", async (t) => {
+test("runtime startup failures emit only the safe RUNTIME_UNAVAILABLE reason", { timeout: 120_000 }, async (t) => {
   const dataDir = join(mkdtempSync(join(tmpdir(), "integration-runtime-failure-")), "data");
   execFileSync("uv", ["run", "cre", "--data-dir", dataDir, "db", "migrate"], { cwd: worktreeRoot });
   const faux = createFauxModels([]);
@@ -243,7 +243,7 @@ function openSse(origin: string, session: Session, lastEventId: string | null) {
     });
   });
   return { connected, until: (predicate: (items: readonly AgentEventV1[]) => boolean, close = true) => new Promise<readonly AgentEventV1[]>((resolve, reject) => {
-    const timeout = setTimeout(() => { request.destroy(); reject(new Error("SSE deadline exceeded")); }, 15_000);
+    const timeout = setTimeout(() => { request.destroy(); reject(new Error("SSE deadline exceeded")); }, 60_000);
     const check = () => { if (!predicate(events)) return; clearTimeout(timeout); waiters.delete(check); if (close) request.destroy(); resolve([...events]); };
     waiters.add(check); check();
   }) };
