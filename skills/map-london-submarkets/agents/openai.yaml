@@ -1,4 +1,4 @@
 interface:
   display_name: "Map London Submarkets"
-  short_description: "Map postcodes to official London geography proxies"
-  default_prompt: "Use $map-london-submarkets to map London office locations to official geography proxies."
+  short_description: "Route London submarket geography questions through the typed facade"
+  default_prompt: "Use $map-london-submarkets to surface the canonical limitations of broker submarket and postcode-resolution coverage through the typed agent facade."

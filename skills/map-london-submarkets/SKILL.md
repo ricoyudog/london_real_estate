@@ -1,38 +1,24 @@
 ---
 name: map-london-submarkets
-description: Map London office postcodes to free ONS geography codes and GLA town-centre polygons. Use for location normalization, borough aggregation, spatial joins, and explaining the limits of commercial submarket boundaries.
+description: Route London office submarket and postcode geography questions through the typed agent facade. Broker submarkets are blocked and postcode resolution is a hidden approval gate; surface canonical limitations instead of inventing submarket polygons.
+type: skill
 ---
 
 # Map London Submarkets
 
-## Normalize a location
+## Start with coverage
 
-Query the current ONS postcode layer:
+Call `describe_market_data` first. Two geography-related capabilities exist:
 
-```python
-from nan_fung.datasources.geography import lookup_postcode
+- `london-broker-submarkets` — `blocked_reason`: "Broker submarket coverage is not approved." There is no canonical Mayfair / West End / Midtown / Fringe polygon capability.
+- `uk.postcode-resolution` — `status: partial`, `query_disabled: true`. Reserved for a hidden Phase 2 approval gate; it is not a model-callable query path today.
 
-postcode = lookup_postcode("EC2Y 5AS")
-```
+The model has no Python source access and no direct ONS / GLA / ArcGIS call. Every geography fact must come through the facade, and neither capability currently returns canonical submarket geography to the model.
 
-Keep the returned postcode, LAD, ward, OA/LSOA/MSOA codes, coordinates, source URL, and retrieval time.
+## Handle blocked coverage
 
-## Query a planning town centre
+When the user asks to map a postcode to a submarket, draw a broker submarket polygon, aggregate data by Mayfair / City / Midtown / Fringe, or normalize a free-text location to a canonical office submarket, do not invent a mapping. Submit a `partial` or `unavailable` brief whose `limitations` carry the exact `blocked_reason` text from `london-broker-submarkets` and name the partial status of `uk.postcode-resolution`.
 
-Query GLA layer 104 by name and request geometry only when a spatial join needs it:
+Distinguish ONS administrative geography (borough, LSOA, MSOA) from a broker office submarket — they are not equivalent. Preserve the original submarket label of any cited market-report provider when one exists in canonical data; never relabel an administrative area as a broker submarket.
 
-```python
-from nan_fung.datasources.geography import query_town_centres
-
-centre = query_town_centres("Canary Wharf", include_geometry=True)
-```
-
-Retain borough, planning authority, designation, classification, source notes, spatial reference, exact query URL, and polygon provenance. Read [submarket geography](../../wiki/research/datasource/13-submarket-geography.md) for update and licence checks.
-
-## Preserve the distinction
-
-Never equate an ONS administrative area or a GLA planning town centre with a broker office submarket. No universal free official polygon exists for City, West End, Midtown, and Fringe.
-
-Preserve each market-report provider's original submarket label. If a project-specific mapping is required, version its rules and exceptions and label it `custom`, not `official`.
-
-Keep `published_at`, `source_updated_at`, and `retrieved_at` distinct. A null update timestamp means the source did not expose one through this tool; never replace it with retrieval time.
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.
