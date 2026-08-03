@@ -56,7 +56,7 @@ test("(a) boot requires PI_MODEL", async () => {
   restoreEnv("PI_MODEL", prior);
 });
 
-test("(b) boot preloads both verified skills into a locked-down resource loader", async () => {
+test("(b) boot preloads verified skills into a locked-down resource loader", async () => {
   // Given: a fake session factory and configured boot environment.
   const priorModel = process.env.PI_MODEL;
   const priorDataDir = process.env.CRE_DATA_DIR;
@@ -141,7 +141,7 @@ test("(f) skill verification rejects a deleted skill", () => {
 });
 
 test("(g) boot ignores an extra on-disk skill when discovery is disabled", async () => {
-  // Given: the two manifest files plus an unrelated third on-disk skill.
+  // Given: the manifest files plus an unrelated on-disk skill.
   const extra = mkdtempSync(join(skillsRoot, "boot-extra-"));
   writeFileSync(join(extra, "SKILL.md"), "untrusted");
   const priorModel = process.env.PI_MODEL;

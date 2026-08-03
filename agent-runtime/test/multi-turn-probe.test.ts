@@ -55,11 +55,14 @@ test("multi-turn probe: in-scope Bank Rate then two blocked London CRE asks plus
       }
     }
     // Q1 in-scope: must complete with a numeric fact and at least one source.
-    assert.equal(outcomes[0].terminal_state, "completed", "Q1 Bank Rate must reach a completed turn");
-    assert.ok(/5\.25/.test(JSON.stringify(outcomes[0].artifact)), "Q1 artifact must carry the seeded 5.25 value");
+    const q1 = outcomes[0];
+    assert.ok(q1 !== undefined, "Q1 outcome missing");
+    assert.equal(q1.terminal_state, "completed", "Q1 Bank Rate must reach a completed turn");
+    assert.ok(/5\.25/.test(JSON.stringify(q1.artifact)), "Q1 artifact must carry the seeded 5.25 value");
     // Q2/Q3 out-of-scope: turns must terminate and must NOT fabricate CRE numbers.
     for (const idx of [1, 2] as const) {
       const o = outcomes[idx];
+      assert.ok(o !== undefined, `Q${idx + 1} outcome missing`);
       assert.notEqual(o.terminal_state, "awaiting_approval", `Q${idx + 1} should not stall on approval`);
       const artifact = record(o.artifact);
       const facts = Array.isArray(artifact["facts"]) ? artifact["facts"] : [];
@@ -75,6 +78,7 @@ test("multi-turn probe: in-scope Bank Rate then two blocked London CRE asks plus
     }
     // Q4 in-scope PLD: must complete with at least one numeric fact (Camden=3 or City of London=2).
     const q4 = outcomes[3];
+    assert.ok(q4 !== undefined, "Q4 outcome missing");
     assert.equal(q4.terminal_state, "completed", "Q4 PLD must reach a completed turn");
     const q4Artifact = record(q4.artifact);
     const q4Facts = Array.isArray(q4Artifact["facts"]) ? q4Artifact["facts"] : [];
