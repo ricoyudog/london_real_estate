@@ -1,6 +1,10 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+test.afterEach(async ({ page }) => {
+  if (!page.isClosed()) await page.goto("about:blank");
+});
+
 test("loads a fixture-labelled overview and releases sessions across repeated reloads", async ({ page }) => {
   await gotoReady(page);
   await expect(page.getByTestId("demo-banner")).toContainText("Deterministic Bank Rate fixture");
@@ -76,7 +80,6 @@ test("marks an unsupported artifact unavailable without rendering its raw payloa
   await expect(page.locator("#turn-status")).toContainText("unsupported final artifact");
   await expect(page.locator("#transcript")).not.toContainText("Final artifact");
   await expect(page.locator("body")).not.toContainText("h1.raw-handle");
-  await page.goto("about:blank");
 });
 
 test("clears a previous result on safe failure, then supports cancel and retry", async ({ page }) => {
