@@ -41,6 +41,15 @@ test("renders only the final artifact with freshness, confidence, lineage and sa
   await expect(page.locator("#transcript")).not.toContainText("4%", { useInnerText: true });
 });
 
+test("writes a direct host-validated answer and source to the transcript", async ({ page }) => {
+  await gotoReady(page);
+  await ask(page, "What is the latest UK Bank Rate? Please include sources.");
+
+  const answer = page.locator(".message--assistant").last();
+  await expect(answer).toContainText("Bank Rate brief: 5.25 percent.");
+  await expect(answer).toContainText("Source: Bank of England.");
+});
+
 test("clears a previous result on safe failure, then supports cancel and retry", async ({ page }) => {
   await gotoReady(page);
   await ask(page, "What is the latest UK Bank Rate?");

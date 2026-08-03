@@ -801,7 +801,17 @@ function appendMessage(kind, label, content) {
 function appendArtifactMessage(artifact) {
   if (!isRecord(artifact)) return;
   const title = scalar(artifact.title) ?? "A final host-validated brief";
-  appendMessage("assistant", "Final artifact", title);
+  const fact = Array.isArray(artifact.facts) ? artifact.facts.find((item) => isRecord(item) && item.kind === "numeric") : undefined;
+  const value = isRecord(fact) ? scalar(fact.numeric_value) : null;
+  const unit = isRecord(fact) ? scalar(fact.numeric_unit) : null;
+  if (value === null || unit === null) {
+    appendMessage("assistant", "Final artifact", title);
+    return;
+  }
+  const sources = Array.isArray(artifact.sources) ? artifact.sources.filter(isRecord) : [];
+  const sourceNames = sources.map((source) => scalar(source.source)).filter((source) => source !== null);
+  const sourceText = sourceNames.length === 0 ? "" : ` ${sourceNames.length === 1 ? "Source" : "Sources"}: ${sourceNames.join(", ")}.`;
+  appendMessage("assistant", "Final artifact", `${title}: ${measurement(value, unit)}.${sourceText}`);
 }
 
 function setConnection(label, status) {
