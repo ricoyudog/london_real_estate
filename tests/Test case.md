@@ -43,7 +43,7 @@ The Phase 2 deterministic runner derives the following rules from this catalog:
   canonical data and preserves last-good data with stale/degraded/partial
   warnings when refresh fails.
 
-## Full-stack delivery verification — 2026-08-02
+## Full-stack delivery verification — 2026-08-03
 
 本輪驗收以 deterministic gates、真實 GLM-5.2 及 Docker in-app browser 三層互相
 對帳。Docker 中的 `5.25 percent` 是 packaged fixture，不是 live market claim。
@@ -51,26 +51,29 @@ The Phase 2 deterministic runner derives the following rules from this catalog:
 | Gate | Result |
 |---|---|
 | Python offline suite | `387 passed, 15 deselected`；包含 time-safe submarket promotion 與 demo initializer/Compose contracts。 |
-| Node unit/integration | `182` tests；`180 passed, 2 skipped, 0 failed`，nested fixtures 已納入 `npm test`；`npm run typecheck` 通過。 |
+| Node unit/integration | `184` tests；`182 passed, 2 skipped, 0 failed`，nested fixtures 已納入 `npm test`；`npm run typecheck` 通過。 |
 | Production dependency audit | clean `npm ci` 後 Pi minimatch 實際 resolve `brace-expansion@5.0.9`，nested vulnerable copy 不存在；`npm audit --omit=dev` 為 `0 vulnerabilities`。 |
-| Browser regression | `9 passed`；涵蓋 session/reload cleanup、seeded/empty/stale overview、suggested prompts、中文/英文/多行/4000 字、double submit、16-turn limit、failure-after-success、cancel/retry、SSE replay、responsive、keyboard、reduced motion 與 axe。 |
-| Real model CLI | `npm run test:glm` 使用 private `.env` 的 `glm/GLM-5.2` 通過；沒有 `modelsOverride` 或 fake session factory。模型曾在 host budget 內重試 finalizer，仍保留 `query_market_data → get_citation_metadata → finalize_market_brief` 序列。 |
+| Browser regression | `11 passed`；涵蓋 session/reload cleanup、direct host-validated transcript answer、unsupported artifact fail-closed、seeded/empty/stale overview、suggested prompts、中文/英文/多行/4000 字、double submit、16-turn limit、failure-after-success、cancel/retry、SSE replay、responsive、keyboard、reduced motion 與 axe。 |
+| Real model CLI | `npm run test:glm` 使用 private `.env` 的 `glm/GLM-5.2` 通過；沒有 `modelsOverride` 或 fake session factory；實際序列為 `describe_market_data → query_market_data → get_citation_metadata → finalize_market_brief`。 |
 | Docker lifecycle | fresh `down -v → up --build --wait` 自動 seed；`down → up --wait` 回報 marker `verified` 且不重複 seed；non-demo mode 遇 marker fail closed。 |
 
 真實 Docker browser turn 與 sanitized `pi_turn_trace.v1` 對帳如下：
 
 | Browser case | Turn ID | Host result / trace |
 |---|---|---|
-| London office overview | `Zv22sIqZFGSuto7pYpCkxg` | UI `Partial`；只顯示 canonical Bank Rate，rent/vacancy/transactions 明列 unavailable；`describe_market_data → query_market_data → get_citation_metadata → finalize_market_brief`。 |
+| London office overview | `_v9mvVPAJcuAyrn0qlyIZQ` | UI `Partial`；只顯示 canonical Bank Rate，rent/vacancy/transactions 明列 unavailable；`describe_market_data → query_market_data → get_citation_metadata → finalize_market_brief`。 |
 | Cancel | `j2oYm8y3wDU_I5tqvmS-Dg` | `terminal_state: cancelled`，`duration_ms: 282.173`；舊 brief 清除，session 立即可接受下一輪。 |
-| Bank Rate retry | `UhnCoGfGeJLIvMa6w5idvw` | UI `Complete`、`5.25 percent`、source/as-of/freshness/confidence/lineage；完整 query/citation/finalizer sequence。 |
-| West End vacancy | `stk_1xOQF876CMPqA2p1Tw` | UI `Unavailable`、0 vacancy facts/sources、沒有模型生成的 vacancy number；`describe_market_data → finalize_market_brief`。 |
+| Bank Rate post-fix screenshot | `0ULVxje2nFA4Q5F7TI-ucg` | UI transcript 直接顯示 `5.25 percent` 與 Bank of England source；右側為 `Complete`，包含 as-of/published/confidence/lineage；`describe_market_data → query_market_data → get_citation_metadata → finalize_market_brief`，`duration_ms: 28494.039`。 |
+| West End post-fix screenshot | `PC6jM0YRfAOOO7FV4lra2w` | UI `Unavailable`、0 vacancy facts/sources、沒有模型生成的 vacancy number；`describe_market_data → finalize_market_brief`，`duration_ms: 13867.462`。 |
 
-Browser console 的 warning/error 記錄為空；trace 不含 prompt、bearer 或 API key。實際
-畫面保存在 [desktop](../wiki/questions/Test_result/screenshots/dashboard-glm-desktop.jpg)
-與 [mobile](../wiki/questions/Test_result/screenshots/dashboard-glm-mobile.jpg)，完整紀錄見
+Browser console 的 warning/error 記錄為空；trace 不含 prompt、bearer 或 API key；
+SSE/replay/recovery 與 DOM 不含 raw `h1.*` citation handle，而以 `Source 1` 保留 claim-to-source
+lineage。最新四張真實 UI 畫面為 [runtime/fixture](../wiki/questions/Test_result/screenshots/dashboard-glm-runtime-coverage-2026-08-03.png)、
+[direct answer](../wiki/questions/Test_result/screenshots/dashboard-glm-bank-rate-answer-2026-08-03.png)、
+[lineage/source](../wiki/questions/Test_result/screenshots/dashboard-glm-lineage-source-2026-08-03.png) 與
+[safe unavailable](../wiki/questions/Test_result/screenshots/dashboard-glm-west-end-unavailable-2026-08-03.png)。完整紀錄見
 [TC-01 dashboard UI test](../wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02.md)
-及 [runtime live test](../wiki/questions/Test_result/TC-01-runtime-live-test-2026-08-02.md)。
+及 [runtime live test](../wiki/questions/Test_result/TC-01-runtime-live-test-2026-08-02.md)。上述四種狀態已嵌入 [Architecture and Demo deck](../docs/London-Market-Desk-Architecture-and-Demo-2026-08-02.pptx) 第 4 頁；全 deck render、overflow 與 template-fidelity checks 均通過。
 
 ## TC-01: Prime rent lookup (simple)
 
