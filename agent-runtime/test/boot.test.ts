@@ -226,6 +226,10 @@ test("(l) boot registers the fixed GLM model from generic PI environment", async
     assert.ok(selectedModel);
     assert.equal(selectedModel.provider, "glm");
     assert.equal(selectedModel.id, "GLM-5.2");
+    assert.equal(compatValue(selectedModel, "supportsDeveloperRole"), false);
+    assert.equal(compatValue(selectedModel, "supportsReasoningEffort"), false);
+    assert.equal(compatValue(selectedModel, "maxTokensField"), "max_tokens");
+    assert.equal(compatValue(selectedModel, "supportsStrictMode"), false);
     assert.deepEqual(booted.runtimeIdentity, { runtime_engine: "pi-agent-session", model: "glm/GLM-5.2" });
   } finally {
     restoreCapturedEnv(prior);
@@ -273,6 +277,10 @@ function fakeBootOptions(): BootOptions {
 
 function entryFor(path: string, content: string): SkillManifest["files"][number] {
   return { path, sha256: createHash("sha256").update(content).digest("hex"), bytes: Buffer.byteLength(content) };
+}
+
+function compatValue(model: { readonly compat?: unknown }, name: string): unknown {
+  return typeof model.compat === "object" && model.compat !== null ? Reflect.get(model.compat, name) : undefined;
 }
 
 function resolveManifest(value: SkillManifest): SkillManifest {

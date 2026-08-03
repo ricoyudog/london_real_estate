@@ -171,6 +171,12 @@ async function createDeploymentModels(configuredModel: string): Promise<ModelRun
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: 200_000,
       maxTokens: 65_536,
+      compat: {
+        supportsDeveloperRole: false,
+        supportsReasoningEffort: false,
+        maxTokensField: "max_tokens",
+        supportsStrictMode: false,
+      },
     }],
   });
   return models;
