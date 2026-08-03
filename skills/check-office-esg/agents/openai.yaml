@@ -1,4 +1,4 @@
 interface:
   display_name: "Check Office ESG"
-  short_description: "Check free official office ESG indicators"
-  default_prompt: "Use $check-office-esg to check official London office ESG indicators."
+  short_description: "Route London office ESG questions through the typed facade"
+  default_prompt: "Use $check-office-esg to surface the canonical unavailability of office EPC / ESG coverage through the typed agent facade."

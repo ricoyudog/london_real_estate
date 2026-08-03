@@ -30,6 +30,11 @@
       "path": "skills/map-london-submarkets/SKILL.md",
       "sha256": "db4b0c9f8687b636f7f8ccb12d7b7938aa1ac5c5dc992ea17c295253bc1c3584",
       "bytes": 1856
+    },
+    {
+      "path": "skills/check-office-esg/SKILL.md",
+      "sha256": "04a373f0a25c478c903b2e5560e68e1ec310f0c7e653ea844d38bc13534ab970",
+      "bytes": 1412
     }
   ]
 }

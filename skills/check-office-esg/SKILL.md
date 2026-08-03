@@ -1,13 +1,21 @@
 ---
 name: check-office-esg
-description: Check free official London non-domestic EPC indicators and their office-market limitations. Use when an agent needs an ESG or energy-efficiency signal for London offices, the latest regional EPC rating counts, or a clear assessment of whether property-level EPB data can be fetched anonymously.
+description: Route London office ESG and energy-efficiency questions through the typed agent facade. No office-EPC capability is exposed today; surface canonical unavailability instead of fabricating ratings.
+type: skill
 ---
 
 # Check Office ESG
 
-1. Read [ESG and energy efficiency](../../wiki/research/datasource/11-esg-energy-efficiency.md) for the verified endpoint, schema, sample and caveats.
-2. Call `nan_fung.datasources.esg.fetch_non_domestic_epc_ratings("London")` to discover and parse the current live-table attachment.
-3. Preserve the quarter, region, attachment URL, source update timestamp and rating counts in the answer; do not relabel an update timestamp as first publication.
-4. Label the result `proxy` and state that non-domestic data include offices and other uses.
-5. Do not infer whole-stock performance: EPCs only exist when required, buildings can have multiple certificates, and records can be revised or opted out.
-6. Treat the record-level EPB API as `pending` until the user supplies a lawful account/token; never claim it is anonymously callable.
+## Start with coverage
+
+Call `describe_market_data` first. There is no office EPC, ESG, energy efficiency, or property-level rating capability in the facade today. Non-domestic EPC live tables and record-level EPB APIs are not exposed as a model-callable capability.
+
+The model has no Python source access and cannot call `nan_fung.datasources.esg` directly. Every fact must come through the facade.
+
+## Handle unavailable coverage
+
+When the user asks for office EPC rating distributions, energy-efficiency indicators, MEES compliance, or property-level ESG signals, do not quote remembered EPC statistics, infer building performance, or fabricate a rating. Submit an `unavailable` brief with empty `facts` and `inferences` and a `limitations` entry naming the gap: "Office EPC / ESG capability is not approved for the agent facade."
+
+If a qualitative ESG observation is supportable only by a resolved citation from `query_market_data` on an in-scope capability, use that path; otherwise the answer is unavailable.
+
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.
