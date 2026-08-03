@@ -1,4 +1,4 @@
 interface:
   display_name: "Monitor Market News"
-  short_description: "Monitor free official market news and policy"
-  default_prompt: "Use $monitor-market-news to monitor official London office market news."
+  short_description: "Route London market news questions through the typed facade"
+  default_prompt: "Use $monitor-market-news to surface the canonical blocked reason for ranked market news through the typed agent facade."

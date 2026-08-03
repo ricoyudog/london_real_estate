@@ -1,13 +1,21 @@
 ---
 name: monitor-market-news
-description: Monitor free official GOV.UK policy, statistics, news and events relevant to the London office market. Use when an agent needs repeatable market-event discovery, structured GOV.UK article retrieval, or a source-backed update without paid news feeds.
+description: Route London office market news and event questions through the typed agent facade. Ranked market news is product-blocked; surface the canonical blocked reason instead of fabricating a feed.
+type: skill
 ---
 
 # Monitor Market News
 
-1. Read [market news and events](../../wiki/research/datasource/12-market-news-events.md) for endpoints, examples and known coverage gaps.
-2. Form a narrow quoted query such as `"commercial property"`, `"London office"` or `"minimum energy efficiency standards"`.
-3. Call `nan_fung.datasources.news.search_market_news(query, count=10)` and review every hit for actual market relevance.
-4. Call `nan_fung.datasources.news.fetch_content_item(url)` for relevant hits before summarising them.
-5. Preserve title, public URL, format, organisation, first-published time and public-updated time; deduplicate by `base_path`.
-6. Distinguish official policy or statistical events from commercial-market reporting. State that paid brokerage/news coverage and complete leasing transactions are outside this free feed.
+## Start with coverage
+
+Call `describe_market_data` first. The ranked market news capability is product-blocked:
+
+- `uk-ranked-market-news` — `blocked_reason`: "Ranked news coverage is not approved."
+
+There is no supported news search, news content, or news ranking capability in the facade today. Do not call `query_market_data` for news — the capability is `query_disabled: true`.
+
+## Handle blocked coverage
+
+When the user asks for market events, policy updates, leasing announcements, or any ranked/news feed, do not paraphrase a remembered article, quote a publication from training data, or invent a source URL. Submit a `partial` or `unavailable` brief whose `limitations` carry the exact `blocked_reason` text returned by `describe_market_data`. A qualitative fact still requires a resolved citation from `query_market_data`; without one, it cannot become a fact.
+
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.

@@ -20,6 +20,11 @@
       "path": "skills/collect-office-market-metrics/SKILL.md",
       "sha256": "0b5484ae8698878bbbb199f64ff7049b0d7aebf3386c1ce0c1342db5715b7c39",
       "bytes": 1664
+    },
+    {
+      "path": "skills/monitor-market-news/SKILL.md",
+      "sha256": "7c09870fe13ce579ecd0ade19aff3d681200f07b2e59c7a4d6d012f7c4891f7e",
+      "bytes": 1274
     }
   ]
 }
