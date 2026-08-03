@@ -188,6 +188,13 @@ export class FacadeLauncher {
         );
       }
     };
+    const streamError = () => {
+      if (boundaryError === undefined) stop(new ProtocolBoundaryError("PROTOCOL_ERROR"));
+    };
+    child.stdin.on("error", streamError);
+    child.stdout.on("error", streamError);
+    child.stderr.on("error", streamError);
+    handlePipe.on("error", streamError);
     child.stdout.on("data", (chunk: Buffer) => {
       stdoutBytes += chunk.byteLength;
       if (stdoutBytes > MAX_STDOUT_BYTES) stop(new ProtocolBoundaryError("RESULT_TOO_LARGE"));

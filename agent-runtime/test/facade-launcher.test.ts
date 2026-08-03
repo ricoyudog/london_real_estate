@@ -87,7 +87,7 @@ async function waitForPidFile(path: string): Promise<readonly number[]> {
   assert.fail(`helper did not become ready: ${path}`);
 }
 
-test("a/b: real facade uses the explicit migrated store from an unrelated parent cwd", async () => {
+test("a/b: real facade uses the explicit migrated store from an unrelated parent cwd", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const oldCwd = process.cwd();
   process.chdir(tmpdir());
@@ -105,7 +105,7 @@ test("a/b: real facade uses the explicit migrated store from an unrelated parent
   }
 });
 
-test("a.1: real facade accepts the seeded canonical citation locator", async () => {
+test("a.1: real facade accepts the seeded canonical citation locator", { timeout: 90_000 }, async () => {
   const launcher = new FacadeLauncher({ creDataDir: seededBankRateStore() });
   const queryRequest = request("call_seeded_query", {
     capability_id: "uk.bank-rate-current", query_kind: "metrics",
@@ -126,7 +126,7 @@ test("a.1: real facade accepts the seeded canonical citation locator", async () 
   assert.equal(Array.isArray(citation.data?.["citations"]) && citation.data?.["citations"].length, 1);
 });
 
-test("c: FD3 is exactly 32 bytes and its key is absent from argv, env, and stdin", async () => {
+test("c: FD3 is exactly 32 bytes and its key is absent from argv, env, and stdin", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const result = await withHelper(dataDir).invoke("describe_market_data", request("call_key"));
   const observation = JSON.parse(readFileSync(join(dataDir, "key-observation.json"), "utf8"));
@@ -141,21 +141,21 @@ test("c: FD3 is exactly 32 bytes and its key is absent from argv, env, and stdin
   });
 });
 
-test("d: oversized stdin becomes a typed invalid-argument result", async () => {
+test("d: oversized stdin becomes a typed invalid-argument result", { timeout: 90_000 }, async () => {
   const result = await withHelper(migratedStore()).invoke("query_market_data", request("call_large", {
     capability_id: "x".repeat(MAX_STDIN_BYTES), query_kind: "metrics",
   }));
   assert.equal(result.error?.code, "INVALID_ARGUMENT");
 });
 
-test("e: stdout overflow becomes typed and kills the process group", async () => {
+test("e: stdout overflow becomes typed and kills the process group", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const result = await withHelper(dataDir).invoke("describe_market_data", request("call_stdout_overflow"));
   assert.equal(result.error?.code, "RESULT_TOO_LARGE");
   await waitForGone(readFileSync(join(dataDir, "call_stdout_overflow.pids"), "utf8").trim().split("\n").map(Number));
 });
 
-test("f: timeout applies the bounded group cleanup", async () => {
+test("f: timeout applies the bounded group cleanup", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const startedAt = performance.now();
   const result = await withHelper(dataDir).invoke("describe_market_data", request("call_timeout"));
@@ -164,7 +164,7 @@ test("f: timeout applies the bounded group cleanup", async () => {
   await waitForGone(readFileSync(join(dataDir, "call_timeout.pids"), "utf8").trim().split("\n").map(Number));
 });
 
-test("g: cancellation applies the same bounded group cleanup", async () => {
+test("g: cancellation applies the same bounded group cleanup", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const controller = new AbortController();
   const invocation = withHelper(dataDir).invoke("describe_market_data", request("call_cancel"), { cancelEvent: controller.signal });
@@ -175,7 +175,7 @@ test("g: cancellation applies the same bounded group cleanup", async () => {
   await waitForGone(pids);
 });
 
-test("g.1: post-SIGKILL liveness EPERM does not mask a cancellation timeout", async () => {
+test("g.1: post-SIGKILL liveness EPERM does not mask a cancellation timeout", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const controller = new AbortController();
   let sigkillSent = false;
@@ -204,12 +204,12 @@ test("g.1: post-SIGKILL liveness EPERM does not mask a cancellation timeout", as
   await waitForGone(pids);
 });
 
-test("h: malformed child stdout is a safe protocol failure", async () => {
+test("h: malformed child stdout is a safe protocol failure", { timeout: 90_000 }, async () => {
   const result = await withHelper(migratedStore()).invoke("describe_market_data", request("call_crash"));
   assert.equal(result.error?.code, "PROTOCOL_ERROR");
 });
 
-test("i: a tampered catalog is rejected during construction", () => {
+test("i: a tampered catalog is rejected during construction", { timeout: 90_000 }, () => {
   const dataDir = migratedStore();
   const probe = JSON.parse(execFileSync("uv", ["run", "python", "-c", "import importlib.resources as r,json,shutil; print(json.dumps({'bin':shutil.which('nan-fung-agent-tools'),'assets_dir':str(r.files('nan_fung.agent_tools'))}))"], { cwd: worktreeRoot, encoding: "utf8" }));
   const assetsDir = mkdtempSync(join(tmpdir(), "facade-assets-"));
@@ -218,7 +218,7 @@ test("i: a tampered catalog is rejected during construction", () => {
   assert.throws(() => new FacadeLauncher({ creDataDir: dataDir, assetsDir }), LauncherConfigError);
 });
 
-test("j: all six protocol exit classes have result parity", async () => {
+test("j: all six protocol exit classes have result parity", { timeout: 90_000 }, async () => {
   const launcher = withHelper(migratedStore());
   for (const code of [0, 2, 3, 4, 5, 6]) {
     const result = await launcher.invoke("describe_market_data", request(`call_parity_${code}`));
@@ -229,7 +229,7 @@ test("j: all six protocol exit classes have result parity", async () => {
   assert.equal(mismatch.error?.code, "PROTOCOL_ERROR");
 });
 
-test("k: read selectors return without writer-construction diagnostics", async () => {
+test("k: read selectors return without writer-construction diagnostics", { timeout: 90_000 }, async () => {
   const launcher = new FacadeLauncher({ creDataDir: migratedStore() });
   for (const [selector, args] of [
     ["describe_market_data", {}],
@@ -242,14 +242,14 @@ test("k: read selectors return without writer-construction diagnostics", async (
   }
 });
 
-test("l: descendants are killed even when the direct child exits normally", async () => {
+test("l: descendants are killed even when the direct child exits normally", { timeout: 90_000 }, async () => {
   const dataDir = migratedStore();
   const result = await withHelper(dataDir).invoke("describe_market_data", request("call_parent_exit"));
   assert.equal(result.status, "ok");
   await waitForGone(readFileSync(join(dataDir, "call_parent_exit.pids"), "utf8").trim().split("\n").map(Number));
 });
 
-test("m: clean-wheel probe resolves the four packaged regular non-symlink files", () => {
+test("m: clean-wheel probe resolves the four packaged regular non-symlink files", { timeout: 60_000 }, () => {
   const root = mkdtempSync(join(tmpdir(), "facade-wheel-"));
   const dist = join(root, "dist");
   const venv = join(root, "venv");
@@ -261,7 +261,7 @@ test("m: clean-wheel probe resolves the four packaged regular non-symlink files"
   assert.deepEqual(Object.values(JSON.parse(output)), [true, true, true, true]);
 });
 
-test("n: EPERM during process-group cleanup becomes a typed protocol failure", async () => {
+test("n: EPERM during process-group cleanup becomes a typed protocol failure", { timeout: 90_000 }, async () => {
   // Given: cleanup lacks permission to signal the detached process group
   const deniedKill: typeof process.kill = (_pid, _signal) => {
     const error = new Error("operation not permitted");
@@ -277,7 +277,7 @@ test("n: EPERM during process-group cleanup becomes a typed protocol failure", a
   assert.equal(result.error?.code, "PROTOCOL_ERROR");
 });
 
-test("o: timeout cleanup failure settles and reaps the child without an external kill", async () => {
+test("o: timeout cleanup failure settles and reaps the child without an external kill", { timeout: 90_000 }, async () => {
   // Given: a running process group whose injected containment kill is denied
   const dataDir = migratedStore();
   const deniedKill: typeof process.kill = (_pid, _signal) => {
@@ -304,7 +304,7 @@ test("o: timeout cleanup failure settles and reaps the child without an external
   await waitForGone(pids);
 });
 
-test("p: process group observable after the SIGKILL deadline is a typed cleanup failure", async () => {
+test("p: process group observable after the SIGKILL deadline is a typed cleanup failure", { timeout: 90_000 }, async () => {
   // Given: signals reach the real group but liveness probes keep observing it
   const persistentKill: typeof process.kill = (pid, signal) => {
     if (signal === 0) return true;
