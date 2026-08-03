@@ -1,4 +1,4 @@
 interface:
   display_name: "Assess Office Demand"
-  short_description: "Assess free office-demand and hybrid-work indicators"
-  default_prompt: "Use $assess-office-demand to assess current London office demand using free indicators."
+  short_description: "Route London office demand questions through the typed facade"
+  default_prompt: "Use $assess-office-demand to surface the canonical unavailability of office demand and hybrid-working coverage through the typed agent facade."

@@ -35,6 +35,11 @@
       "path": "skills/check-office-esg/SKILL.md",
       "sha256": "04a373f0a25c478c903b2e5560e68e1ec310f0c7e653ea844d38bc13534ab970",
       "bytes": 1412
+    },
+    {
+      "path": "skills/assess-office-demand/SKILL.md",
+      "sha256": "7473f6631e0e72bf63ba11a9cb3fe5709527a8061ccb5f1b541a143c4a2d6458",
+      "bytes": 1715
     }
   ]
 }
