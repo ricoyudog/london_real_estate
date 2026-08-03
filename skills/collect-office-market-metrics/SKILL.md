@@ -1,47 +1,23 @@
 ---
 name: collect-office-market-metrics
-description: Collect free London office rents, vacancy, availability, take-up, major deals, stock, and demand proxies. Use for current or historical office-market metric collection, quarterly monitoring, and source-backed market summaries.
+description: Route London office rent, vacancy, availability, take-up, deals, stock, and investment questions through the typed agent facade. All headline office-market metrics are blocked; surface the canonical blocked reasons instead of fabricating values.
+type: skill
 ---
 
 # Collect Office Market Metrics
 
-## Collect report-derived metrics
+## Start with coverage
 
-1. Open the [BNP research index](https://www.realestate.bnpparibas.co.uk/insights/research).
-2. Select the newest `Central London Office Market Update` by quarter and publication date.
-3. Record the landing-page URL, publication date, reporting period, and PDF download URL.
-4. Extract the PDF with the discovered URL:
+Call `describe_market_data` first. The headline London office-market capabilities are product-blocked:
 
-```python
-from nan_fung.datasources.market import fetch_public_market_report
+- `london-prime-rent` — prime office rent. `blocked_reason`: "Product coverage is not approved."
+- `london-office-vacancy` — office vacancy rate. `blocked_reason`: "Product coverage is not approved."
+- `uk-investment-transactions` — investment transactions. `blocked_reason`: "Transaction coverage is not approved."
 
-publication_date = "YYYY-MM-DD"  # Copy from the selected landing page.
-report = fetch_public_market_report(url=pdf_url, published_at=publication_date)
-```
+There is no supported rent, vacancy, availability, take-up, deal, or stock capability in the facade today. Do not claim report-derived, BNP, Rightmove, or any other rent/vacancy numbers as available — they cannot be queried through the facade.
 
-5. Extract prime rent, vacancy, supply, Grade A share, take-up, and major deals with their page numbers. For deal fields, prefer the `Top Leasing Transactions` table and use narrative text for statuses such as `pre-let`; record any discrepancy.
-6. Label every value `report-derived`; retain the provider's unit, definition, submarket label, period, and source URL.
+## Handle blocked coverage
 
-Read [rent](../../wiki/research/datasource/01-office-rent.md), [availability](../../wiki/research/datasource/02-office-stock-availability.md), and [transactions](../../wiki/research/datasource/03-leasing-transactions.md) before publishing results.
+When the user asks for any prime rent, vacancy, availability, take-up, Grade A share, major leasing transaction, investment volume, or stock figure, do not estimate, infer, or quote a remembered market value. Submit a `partial` or `unavailable` brief whose `limitations` carry the exact `blocked_reason` text returned by `describe_market_data`. A numeric fact requires a resolved citation from `query_market_data`; without one, the metric cannot be a numeric fact.
 
-## Collect official stock
-
-Open the [VOA collection](https://www.gov.uk/government/collections/non-domestic-rating-stock-of-properties-collection), choose the newest release, and obtain its CSV ZIP. Use the default only while 2026 remains the required release:
-
-```python
-from nan_fung.datasources.market import fetch_voa_office_stock
-
-stock = fetch_voa_office_stock("E12000007")
-```
-
-Label VOA output `stock`; never interpret hereditament counts as buildings, floor area, availability, or vacancy.
-
-## Collect the free demand proxy
-
-Open Rightmove Commercial Property News, find the newest `Insights Tracker`, and read the office-demand and methodology sections in the normal browser. Record the comparison window and enquiry definition. Label the values `proxy`.
-
-Do not scrape Rightmove, reproduce its charts, or describe enquiries as active requirements. Follow [corporate demand](../../wiki/research/datasource/09-corporate-office-demand.md).
-
-## Report
-
-Keep each provider series separate. Cite every observation and state coverage gaps. Do not list paid products as successful sources.
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.

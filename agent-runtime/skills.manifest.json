@@ -15,6 +15,11 @@
       "path": "skills/track-office-supply/SKILL.md",
       "sha256": "62a8de2e68f913091380f0e26e6a22c5670e1862120cf7089bf21e4aa3c216da",
       "bytes": 2172
+    },
+    {
+      "path": "skills/collect-office-market-metrics/SKILL.md",
+      "sha256": "0b5484ae8698878bbbb199f64ff7049b0d7aebf3386c1ce0c1342db5715b7c39",
+      "bytes": 1664
     }
   ]
 }

@@ -1,4 +1,4 @@
 interface:
   display_name: "Collect Office Market Metrics"
-  short_description: "Collect free London office market report metrics"
-  default_prompt: "Use $collect-office-market-metrics to collect the latest free London office metrics with citations."
+  short_description: "Route London office market metrics through the typed facade"
+  default_prompt: "Use $collect-office-market-metrics to surface the canonical blocked reasons for prime rent, vacancy, and investment transactions through the typed agent facade."
