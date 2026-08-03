@@ -1,12 +1,21 @@
 ---
 type: wiki
-updated: 2026-07-31
+updated: 2026-08-03
 source: "[[User Requirement]]"
 ---
 
 # 供應管線 Data Sources
 
-## 已驗證：Planning London Datahub（PLD）guest API
+> **2026-08-03 update:** the legacy GLA PLD guest Elasticsearch API documented
+> below is **not** the canonical ingestion source. The current production
+> canonical path uses Crown-copyright `planning.data.gov.uk`; see
+> [[wiki/research/datasource/planning-data-gov-uk-survey|the planning.data.gov.uk survey]]
+> and [[wiki/decisions/london-planning-activity-unlock-2026-08-03|the unlock decision]].
+> The capability shipped is `london-planning-activity` (monthly decided-application
+> counts per London authority), not the originally-targeted `london-project-supply`
+> (with floorspace) — no qualifying public source exists for floorspace.
+
+## Historical: Planning London Datahub（PLD）guest API
 
 - 類型：免費、免帳戶的 read-only Elasticsearch API；agent 可直接調用。
 - 覆蓋：London planning authorities；資料由申請人及各 LPA 提供。

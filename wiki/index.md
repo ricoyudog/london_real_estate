@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-01
+updated: 2026-08-03
 ---
 
 # nan_fung Wiki Index
@@ -11,6 +11,7 @@ updated: 2026-08-01
 
 - [[wiki/hot|Hot — Current Project Status]]
 - [[wiki/User Requirement|User Requirement]]
+- [[wiki/decisions/london-planning-activity-unlock-2026-08-03|London Planning Activity Unlock — 2026-08-03]] — first non-Bank-Rate capability; canonical-eligibility deep dive
 - [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status]] — 已實作與實測證據
 - [[wiki/decisions/datasource-database-and-scheduled-ingestion|Datasource Database and Scheduled Ingestion Pipeline]] — 原始 proposed specification
 

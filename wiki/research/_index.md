@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-01
+updated: 2026-08-03
 ---
 
 # Research Index
@@ -24,12 +24,18 @@ source-policy approval；現時 operational 狀態見
 
 > 每一頁現在都有清楚的 `## 實際取得的 Example Data`：API／工具來源列出 live `SourceResult` JSON；報告或網頁來源列出帶頁碼／URL 的 `normalized agent extraction` JSON，而不只寫「驗證成功」。
 
+#### Source surveys (canonical-eligibility deep dives)
+
+- [[wiki/research/datasource/planning-data-gov-uk-survey|planning.data.gov.uk Crown Copyright Survey — 2026-08-03]] — verified OGL v3 source for `london-planning-activity`; documents why `london-project-supply` floorspace is unattainable on public data
+
+#### 13 coverage topics
+
 | # | 種類 | 狀態 | 已取得的數據形式 |
 | --- | --- | --- | --- |
 | 1 | [[wiki/research/datasource/01-office-rent|辦公室租金]] | ✅ 已取得 | 公開報告 `report-derived` |
 | 2 | [[wiki/research/datasource/02-office-stock-availability|辦公室存量與可用樓面]] | ✅ 已取得 | VOA API-ready CSV＋公開報告 |
 | 3 | [[wiki/research/datasource/03-leasing-transactions|租賃成交]] | ✅ 已取得 | 公開報告的主要交易 |
-| 4 | [[wiki/research/datasource/04-supply-pipeline|供應管線]] | ✅ 已取得 | PLD API |
+| 4 | [[wiki/research/datasource/04-supply-pipeline|供應管線]] | ✅ 已取得 | PLD API（legacy）；canonical 現改用 planning.data.gov.uk |
 | 5 | [[wiki/research/datasource/05-interest-rates-monetary-policy|利率與貨幣政策]] | ✅ 已取得 | BoE CSV／RSS |
 | 6 | [[wiki/research/datasource/06-gdp|GDP]] | ✅ 已取得 | ONS API |
 | 7 | [[wiki/research/datasource/07-inflation|通脹]] | ✅ 已取得 | ONS API |

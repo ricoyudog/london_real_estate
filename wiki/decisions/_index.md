@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-02
+updated: 2026-08-03
 ---
 
 # Decisions Index
@@ -9,6 +9,7 @@ updated: 2026-08-02
 
 ## Implemented and Verified
 
+- [[wiki/decisions/london-planning-activity-unlock-2026-08-03|London Planning Activity Unlock — 2026-08-03]] — accepted；`pld.applications_search` promoted to production on Crown-copyright OGL v3 data；live daemon run ingested 189 Camden observations
 - [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status — 2026-08-01]] — accepted；含 live persistence、ONSPD retention 與驗收結果
 - [[wiki/decisions/agent-tool-facade-foundation|Agent Tool Facade Foundation]] — accepted；Phase 1 已完成並通過 offline exit gate
 - [[wiki/decisions/pi-agent-runtime-and-skills-vertical-slice|Pi Agent Runtime and Skills Vertical Slice]] — accepted；Phase 1 closure 已驗證，Phase 2 已完成並通過 2a／2b／2c mandatory gates
