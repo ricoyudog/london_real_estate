@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { FacadeLauncher, type ToolResult } from "../src/facade-launcher.ts";
 import { DraftRejected } from "../src/finalizer.ts";
@@ -11,9 +10,9 @@ import { TurnContext, defaultTurnLimits, type SessionContext } from "../src/runt
 import { createSessionTools, modelVisibleBytes } from "../src/tools.ts";
 import Schema from "typebox/schema";
 
-const mainCheckoutRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const worktreeRoot = resolve(import.meta.dirname, "../..");
 const fixtures = JSON.parse(
-  readFileSync(join(mainCheckoutRoot, "tests/fixtures/agent_tools/v1/tool-contract-fixtures.json"), "utf8"),
+  readFileSync(resolve(worktreeRoot, "tests/fixtures/agent_tools/v1/tool-contract-fixtures.json"), "utf8"),
 ) as {
   readonly valid: Readonly<Record<string, { readonly arguments: unknown }>>;
   readonly invalid: readonly { readonly selector: string; readonly target: string; readonly value: unknown }[];

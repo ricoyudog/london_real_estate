@@ -8,6 +8,7 @@ import time
 
 import pytest
 
+from nan_fung.ingestion import parser_runner
 from nan_fung.ingestion.parser_runner import (
     ParserExecutionError,
     ParserLimits,
@@ -147,10 +148,45 @@ def test_parser_parent_preserves_timeout() -> None:
 def test_parser_isolation_status_is_explicit_when_the_host_cannot_enforce_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(sys, "platform", "linux")
-
+    monkeypatch.setattr(sys, "platform", "aix")
     assert parser_isolation_status() == {
         "available": False,
         "backend": None,
         "reason": "PARSER_ISOLATION_UNAVAILABLE",
+    }
+
+
+def test_parser_isolation_status_picks_bubblewrap_on_linux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(parser_runner.shutil, "which", lambda name: "/usr/bin/bwrap" if name == "bwrap" else None)
+    assert parser_isolation_status() == {
+        "available": True,
+        "backend": "bubblewrap",
+        "reason": None,
+    }
+
+
+def test_parser_isolation_status_fails_closed_when_bubblewrap_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(parser_runner.shutil, "which", lambda _name: None)
+    assert parser_isolation_status() == {
+        "available": False,
+        "backend": None,
+        "reason": "PARSER_ISOLATION_UNAVAILABLE",
+    }
+
+
+def test_parser_isolation_status_picks_sandbox_exec_on_macos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(parser_runner.shutil, "which", lambda name: "/usr/bin/sandbox-exec" if name == "sandbox-exec" else None)
+    assert parser_isolation_status() == {
+        "available": True,
+        "backend": "sandbox-exec",
+        "reason": None,
     }

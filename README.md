@@ -15,10 +15,11 @@ numbers.
 The `5.25 percent` shown here is a deterministic demo fixture, not a live market
 claim. See the recorded [browser test](wiki/questions/Test_result/TC-01-dashboard-ui-test-2026-08-02.md).
 
-## Fast start (local macOS development)
+## Fast start (local development)
 
-Requirements: macOS, Python 3.12 via `uv`, Node 22.19+, and a GLM-compatible
-endpoint. Install both runtime layers:
+Requirements: macOS or Linux, Python 3.12 via `uv`, Node 22.19+, and a
+GLM-compatible endpoint. On Linux install `bubblewrap` for parser isolation
+(Debian/Ubuntu: `apt-get install bubblewrap`). Install both runtime layers:
 
 ```sh
 uv sync
@@ -74,8 +75,13 @@ The UI, HTTP/SSE transport, typed Facade, and Pi `createAgentSession` runtime
 then start behind a healthcheck suitable for `--wait`.
 
 This mode is explicitly a reproducible fixture demo. It does not run live
-ingestion or grant a refresh profile. Linux containers must not run `cre daemon`
-because parser isolation depends on macOS `sandbox-exec`.
+ingestion or grant a refresh profile. To run live ingestion inside Docker on a
+Linux host, enable the opt-in `ingestion` profile (bubblewrap sandbox; the
+service needs `CAP_SYS_ADMIN` to create user namespaces):
+
+```sh
+MARKET_DESK_MODE=production docker compose --profile ingestion up ingestion
+```
 
 ```sh
 docker compose down      # stop containers; preserve the seeded demo volume
@@ -90,7 +96,9 @@ demo marker is found in a non-demo startup.
 
 ## Data pipeline
 
-The operational data pipeline is host-owned and runs on macOS:
+The operational data pipeline runs on macOS or Linux. Linux hosts use
+`bubblewrap` (`bwrap`) instead of macOS `sandbox-exec` for parser isolation;
+install it from your distro (Debian/Ubuntu: `apt-get install bubblewrap`).
 
 ```sh
 cre --config /secure/cre.toml db migrate

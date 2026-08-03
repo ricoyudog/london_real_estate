@@ -49,23 +49,32 @@ def parser_isolation_status() -> dict[str, str | bool | None]:
     """Report whether this host can enforce the parser child boundary.
 
     The parser protocol deliberately does not fall back to a Python-only
-    guard.  It needs macOS ``sandbox-exec`` today, so operators can see this
-    prerequisite before a job reaches the parsing stage.
+    guard.  It needs a kernel-enforced isolation backend today: macOS
+    ``sandbox-exec`` or Linux ``bubblewrap`` (``bwrap``).  Operators can see
+    this prerequisite before a job reaches the parsing stage.
     """
 
-    if sys.platform != "darwin":
-        return {
-            "available": False,
-            "backend": None,
-            "reason": "PARSER_ISOLATION_UNAVAILABLE",
-        }
-    if shutil.which("sandbox-exec") is None:
-        return {
-            "available": False,
-            "backend": None,
-            "reason": "PARSER_ISOLATION_UNAVAILABLE",
-        }
-    return {"available": True, "backend": "sandbox-exec", "reason": None}
+    if sys.platform == "darwin":
+        if shutil.which("sandbox-exec") is None:
+            return {
+                "available": False,
+                "backend": None,
+                "reason": "PARSER_ISOLATION_UNAVAILABLE",
+            }
+        return {"available": True, "backend": "sandbox-exec", "reason": None}
+    if sys.platform.startswith("linux"):
+        if shutil.which("bwrap") is None:
+            return {
+                "available": False,
+                "backend": None,
+                "reason": "PARSER_ISOLATION_UNAVAILABLE",
+            }
+        return {"available": True, "backend": "bubblewrap", "reason": None}
+    return {
+        "available": False,
+        "backend": None,
+        "reason": "PARSER_ISOLATION_UNAVAILABLE",
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,24 +130,37 @@ def run_bounded_parser(
     module_name, qualname = _parser_identity(parser)
     parser_source = _parser_source_path(parser)
     isolation = parser_isolation_status()
-    sandbox_executable = shutil.which("sandbox-exec")
-    if not isolation["available"] or sandbox_executable is None:
+    if not isolation["available"]:
         # The child must have a kernel-enforced policy.  A Python-only guard
         # can be bypassed by an already-bound C extension function.
         raise ParserExecutionError("PARSER_ISOLATION_UNAVAILABLE")
-    command = (
-        sandbox_executable,
-        "-p",
-        _macos_parser_profile(parser_source),
-        str(Path(sys.executable).resolve()),
-        "-c",
-        _SANDBOX_BOOTSTRAP,
-        module_name,
-        qualname,
-        str(parser_source),
-        str(limits.max_input_bytes),
-        str(limits.max_output_bytes),
-    )
+    backend = isolation["backend"]
+    if backend == "sandbox-exec":
+        sandbox_executable = shutil.which("sandbox-exec")
+        if sandbox_executable is None:
+            raise ParserExecutionError("PARSER_ISOLATION_UNAVAILABLE")
+        command = _macos_sandbox_command(
+            sandbox_executable,
+            module_name=module_name,
+            qualname=qualname,
+            parser_source=parser_source,
+            max_input_bytes=limits.max_input_bytes,
+            max_output_bytes=limits.max_output_bytes,
+        )
+    elif backend == "bubblewrap":
+        bwrap_executable = shutil.which("bwrap")
+        if bwrap_executable is None:
+            raise ParserExecutionError("PARSER_ISOLATION_UNAVAILABLE")
+        command = _bubblewrap_command(
+            bwrap_executable,
+            module_name=module_name,
+            qualname=qualname,
+            parser_source=parser_source,
+            max_input_bytes=limits.max_input_bytes,
+            max_output_bytes=limits.max_output_bytes,
+        )
+    else:
+        raise ParserExecutionError("PARSER_ISOLATION_UNAVAILABLE")
     process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
@@ -400,6 +422,75 @@ def _sandbox_import_paths() -> tuple[Path, ...]:
         if candidate.is_relative_to(prefix):
             candidates.add(candidate)
     return tuple(sorted(candidates, key=str))
+
+
+def _macos_sandbox_command(
+    sandbox_executable: str,
+    *,
+    module_name: str,
+    qualname: str,
+    parser_source: Path,
+    max_input_bytes: int,
+    max_output_bytes: int,
+) -> tuple[str, ...]:
+    return (
+        sandbox_executable,
+        "-p",
+        _macos_parser_profile(parser_source),
+        str(Path(sys.executable).resolve()),
+        "-c",
+        _SANDBOX_BOOTSTRAP,
+        module_name,
+        qualname,
+        str(parser_source),
+        str(max_input_bytes),
+        str(max_output_bytes),
+    )
+
+
+def _bubblewrap_command(
+    bwrap_executable: str,
+    *,
+    module_name: str,
+    qualname: str,
+    parser_source: Path,
+    max_input_bytes: int,
+    max_output_bytes: int,
+) -> tuple[str, ...]:
+    """Build the bubblewrap (``bwrap``) argv for a Linux parser child.
+
+    Must mirror ``_macos_parser_profile``: read-only system/venv/source,
+    no network, isolated namespaces, dies with parent.  Anything outside
+    the allowlist must be invisible to the child.
+    """
+
+    command: list[str] = [bwrap_executable]
+    command.extend(["--ro-bind", "/usr", "/usr"])
+    command.extend(["--ro-bind", "/lib", "/lib"])
+    command.extend(["--ro-bind", "/lib64", "/lib64"])
+    command.extend(["--ro-bind", "/bin", "/bin"])
+    command.extend(["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"])
+    command.extend(["--ro-bind", "/etc/ssl", "/etc/ssl"])
+    # ponytail: timezone DB lives here on Debian/Ubuntu; safe read-only.
+    command.extend(["--ro-bind-try", "/usr/share/zoneinfo", "/usr/share/zoneinfo"])
+    command.extend(["--ro-bind", str(Path(sys.prefix).resolve()), str(Path(sys.prefix).resolve())])
+    if Path(sys.base_prefix).resolve() != Path(sys.prefix).resolve():
+        command.extend(["--ro-bind", str(Path(sys.base_prefix).resolve()), str(Path(sys.base_prefix).resolve())])
+    command.extend(["--ro-bind", str(_source_root()), str(_source_root())])
+    command.extend(["--ro-bind", str(parser_source.resolve()), str(parser_source.resolve())])
+    command.extend(["--dev", "/dev"])
+    command.extend(["--proc", "/proc"])
+    command.extend(["--tmpfs", "/tmp"])
+    command.extend([
+        "--unshare-all",
+        "--share-net",
+        "--die-with-parent",
+        "--new-session",
+    ])
+    command.append(str(Path(sys.executable).resolve()))
+    command.extend(["-c", _SANDBOX_BOOTSTRAP])
+    command.extend([module_name, qualname, str(parser_source), str(max_input_bytes), str(max_output_bytes)])
+    return tuple(command)
 
 
 def _macos_parser_profile(parser_source: Path) -> str:

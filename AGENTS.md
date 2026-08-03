@@ -87,7 +87,7 @@ Highest-centrality symbols (edit with blast radius in mind):
 
 - **Do not add a `conftest.py` or shared fixture factory.** Setup is intentionally local per test file (`tmp_path`, `monkeypatch`, per-file `_store`/`_seed_store`/`_fixture` helpers). Only the agent-tool protocol uses shared JSON fixtures (`tests/fixtures/agent_tools/v1/`).
 - **Do not introduce Ruff/Black/mypy/isort config without explicit ask.** Project ships no formatter/linter config; do not silently add one.
-- **Do not parse evidence in-process without the sandbox.** Parsers run under macOS `sandbox-exec` via `ingestion/parser_runner.py`. Adding a parser means binding it through the sandbox path, not calling it directly.
+- **Do not parse evidence in-process without the sandbox.** Parsers run under macOS `sandbox-exec` or Linux `bubblewrap` via `ingestion/parser_runner.py`. Adding a parser means binding it through the sandbox path, not calling it directly.
 - **Do not extend `OperationalStore` casually.** It is already ~4900 LOC. New stateful surfaces go in their own module and compose through it.
 - **Do not add a second HTTP server.** The same-origin Node dashboard/runtime owns HTTP/SSE; Python reads stay in-process and agent tools remain a subprocess contract.
 - **Do not follow symlinks for operator-supplied files.** `_read_fixture`, cursor secret, and CAS temp files all open with `O_NOFOLLOW`.
@@ -125,7 +125,7 @@ uv run cre --data-dir ./data health
 uv run cre --data-dir ./data registry diff
 uv run cre --data-dir ./data datasource status
 
-# Daemon (production-shaped; macOS host for sandbox-exec)
+# Daemon (production-shaped; macOS sandbox-exec or Linux bubblewrap)
 uv run cre --config /etc/cre/cre.toml daemon once --allow-network
 uv run cre --config /etc/cre/cre.toml daemon run --allow-network --poll-interval-seconds 30
 
@@ -136,9 +136,9 @@ nan-fung-agent-tools <tool-name> < request.json > result.json
 ## NOTES
 
 - **Naming drift.** Package is `nan-fung`/`nan_fung`; OpenSpec tracks GitHub `ricoyudog/london_real_estate`. Likely historical.
-- **macOS dependency for ingestion.** Parser isolation uses `sandbox-exec`. Non-macOS hosts can run reads/migrations/health but ingestion should stay disabled unless `health` reports `parser_isolation.available`.
-- **No CI.** Production ingestion still needs an external macOS service manager; the Docker stack is a deterministic read/runtime demo and never runs the daemon.
+- **Parser isolation backends.** macOS uses `sandbox-exec`; Linux uses `bubblewrap` (`bwrap`). `parser_isolation_status()` auto-detects the platform and fails closed when neither is available. Linux containers running the daemon need `CAP_SYS_ADMIN` (or unconfined seccomp) so `bwrap` can create user namespaces.
+- **No CI.** Production ingestion still needs an external service manager (macOS launchd or Linux systemd). The Docker stack supports an opt-in `ingestion` profile (`docker compose --profile ingestion up ingestion`) that runs the daemon inside the Linux container under bubblewrap; the default demo path stays dashboard-only.
 - **Node/dashboard runtime is present.** `agent-runtime/` implements Pi `createAgentSession`, HTTP/SSE, host finalization, and the same-origin UI.
-- **Offline gate is green.** Current verification is `387 passed, 15 deselected`; update this note when the collected suite changes.
+- **Offline gate is green.** Current verification is `390 passed, 15 deselected`; update this note when the collected suite changes.
 - **`operational.py` is a known hotspot.** ~4900 LOC, 134 callers. Edit carefully; prefer composing through it from a new module.
 - **`.codegraph` is a gitignored symlink** to local CodeGraph state — first `git add -A` staged it accidentally; see `memory/pitfalls`.

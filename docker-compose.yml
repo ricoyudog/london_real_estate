@@ -48,7 +48,40 @@ services:
       start_period: 5s
     restart: unless-stopped
 
-# Dedicated to the deterministic fixture demo. Live acquisition remains a
-# macOS-host responsibility because parser isolation depends on sandbox-exec.
+  # Opt-in live ingestion daemon. Bubblewrap needs CAP_SYS_ADMIN to create
+  # user namespaces inside the container. Start with:
+  #   MARKET_DESK_MODE=production docker compose --profile ingestion up ingestion
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["ingestion"]
+    env_file:
+      - ./agent-runtime/.env
+    environment:
+      CRE_DATA_DIR: /data
+      MARKET_DESK_MODE: "${MARKET_DESK_MODE:-production}"
+    volumes:
+      - market-desk-demo-data:/data
+      - ./cre.toml:/etc/cre/cre.toml:ro
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    command:
+      - uv
+      - run
+      - cre
+      - --config
+      - /etc/cre/cre.toml
+      - daemon
+      - run
+      - --allow-network
+      - --poll-interval-seconds
+      - "${CRE_POLL_INTERVAL_SECONDS:-30}"
+    restart: unless-stopped
+
+# Demo and ingestion share the OperationalStore single-writer lease on one
+# volume. macOS sandbox-exec stays canonical; bubblewrap is the Linux path.
 volumes:
   market-desk-demo-data:

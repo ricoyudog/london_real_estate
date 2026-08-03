@@ -1,6 +1,6 @@
 ## OVERVIEW
 
-Pytest suite: 49 modules and 402 collected tests (`387 passed, 15 deselected` in the current offline gate). Integration-heavy, with real temporary SQLite and CAS state.
+Pytest suite: 49 modules and 405 collected tests (`390 passed, 15 deselected` in the current offline gate). Integration-heavy, with real temporary SQLite and CAS state.
 
 ## STRUCTURE
 

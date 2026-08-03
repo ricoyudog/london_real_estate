@@ -1,6 +1,12 @@
 # syntax=docker/dockerfile:1
 FROM node:22.19.0-bookworm-slim
 
+# bubblewrap: Linux parser-sandbox backend (equivalent to macOS sandbox-exec).
+# Only needed if `cre daemon` runs in this image; demo path does not use it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bubblewrap ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # uv provisions the locked Python runtime used by the agent-tool facade.
 COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
 
@@ -33,11 +39,13 @@ COPY agent-runtime/skills.manifest.json ./agent-runtime/skills.manifest.json
 COPY skills ./skills
 COPY demo ./demo
 
-# This Linux image is read/runtime only. Canonical ingestion requires macOS
-# sandbox-exec parser isolation, so never run `cre daemon` from this container.
+# Linux parser isolation uses bubblewrap; `cre daemon` works in this image
+# when the runtime grants SYS_ADMIN (needed for user namespaces). Compose
+# documents this; the default CMD stays dashboard-only.
 VOLUME ["/data"]
 EXPOSE 8787
 
 # Compose gates this service on the one-shot demo initializer. exec keeps the
-# Node server as PID 1; no ingestion daemon runs in this Linux image.
+# Node server as PID 1; ingestion daemon is opt-in via a separate compose
+# profile, not the default demo CMD.
 CMD ["npm", "--prefix", "/app/agent-runtime", "run", "serve"]
