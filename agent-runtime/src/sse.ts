@@ -1,6 +1,7 @@
 // allow: SIZE_OK - task 13's bounded event transport is a single protocol boundary.
 import type * as http from "node:http";
 
+import { projectArtifactForBrowser } from "./browser-artifact.ts";
 import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
 import type { RecoveryStore } from "./recovery.ts";
 import type { AgentEvent, LifecycleReducer, TurnFailureReason } from "./runtime.ts";
@@ -202,7 +203,7 @@ export function projectLifecycle(sessionId: string, turnId: string, hub: SseHub,
     case "approval.resolved":
       return hub.emit(sessionId, turnId, "approval.resolved", { decision: event.decision });
     case "artifact.final":
-      return hub.emit(sessionId, turnId, "artifact.final", { artifact: artifact ?? null });
+      return hub.emit(sessionId, turnId, "artifact.final", { artifact: projectArtifactForBrowser(artifact) });
     case "turn.completed":
       return hub.emit(sessionId, turnId, "turn.completed", { terminal_state: event.terminal_state });
     case "turn.failed":

@@ -57,6 +57,7 @@ test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrec
   const recovered = await getJson(`${fixture.origin}/v1/sessions/${session.id}/turns/${turn}`, session);
   assert.equal(recovered["state"], "completed");
   assertArtifact(record(recovered["artifact"])["artifact"], false);
+  assert.equal(JSON.stringify({ events, lateEvents, liveTail, replayEvents, recovered }).includes("h1."), false);
   assert.equal(JSON.stringify({ events, lateEvents, replayEvents, recovered }).includes(session.bearer), false);
   assert.equal(fixture.logs.join("\n").includes(session.bearer), false);
   assert.deepEqual(record(fixture.traces[0])["tool_sequence"], ["query_market_data", "get_citation_metadata", "finalize_market_brief"]);
@@ -67,16 +68,18 @@ test("full HTTP/SSE session preserves order, replay, recovery, and bearer secrec
   writeEvidence("happy.json", { events, lateEvents, liveTail, replayEvents, recovered });
 });
 
-test("cancel and conflict are observable through the real transport and release the session", async (t) => {
+test("cancel and conflict are observable through the real transport and release the registry turn slot", async (t) => {
   const gate = deferred<void>();
-  const fixture = await setup("cancel", false, gate.promise);
-  t.after(fixture.close);
+  let gateEntered = false;
+  const fixture = await setup("cancel", false, gate.promise, () => { gateEntered = true; });
+  t.after(async () => { gate.resolve(); await fixture.close(); });
   const session = await createSession(fixture.origin);
   const stream = openSse(fixture.origin, session, null);
   await stream.connected;
   const turn = await postMessage(fixture.origin, session, "Give the latest Bank Rate.");
   await waitFor(() => fixture.app.hub.events(session.id).some((event) => event.type === "turn.started"));
   await waitFor(() => fixture.launcher.calls.some((call) => call.toolName === "query_market_data"));
+  await waitFor(() => gateEntered);
   const conflict = await fetch(`${fixture.origin}/v1/sessions/${session.id}/messages`, { method: "POST", headers: auth(session), body: JSON.stringify({ message: "Give the current rate." }) });
   assert.equal(conflict.status, 409);
   const cancelled = await fetch(`${fixture.origin}/v1/sessions/${session.id}/turns/${turn}/cancel`, { method: "POST", headers: auth(session) });
@@ -89,13 +92,17 @@ test("cancel and conflict are observable through the real transport and release 
   const cancelledTrace = fixture.traces.find((entry) => record(entry)["turn_id"] === turn);
   assert.equal(record(cancelledTrace)["terminal_state"], "cancelled");
   assert.equal(record(cancelledTrace)["reason_code"], undefined);
-  gate.resolve();
+  const terminals = fixture.app.hub.events(session.id).filter((event) => event.turn_id === turn && (event.type === "turn.completed" || event.type === "turn.failed"));
+  assert.equal(terminals.length, 1);
+  assert.equal(terminals[0]?.type, "turn.completed");
+  assert.equal(record(terminals[0]?.payload)["terminal_state"], "cancelled");
   const cancelledTerminal = events.find((event) => event.turn_id === turn && event.type === "turn.completed");
   assert.ok(cancelledTerminal);
   const replayAfterCancel = openSse(fixture.origin, session, cancelledTerminal.event_id);
   await replayAfterCancel.connected;
   fixture.faux.faux.setResponses([...scriptedTurn(fixture.launcher)]);
   const nextTurn = await postMessage(fixture.origin, session, "Give the current Bank Rate.");
+  gate.resolve();
   const resumed = await replayAfterCancel.until((items) => terminal(items, nextTurn));
   assert.ok(resumed.some((event) => event.turn_id === nextTurn && event.type === "turn.completed"));
   assert.equal(fixture.logs.join("\n").includes(session.bearer), false);
@@ -150,7 +157,7 @@ test("runtime startup failures emit only the safe RUNTIME_UNAVAILABLE reason", a
   assert.equal(record(traces[0])["reason_code"], "RUNTIME_UNAVAILABLE");
 });
 
-async function setup(name: string, publishedNull: boolean, firstResponseGate?: Promise<void>) {
+async function setup(name: string, publishedNull: boolean, firstResponseGate?: Promise<void>, onGateEntered?: () => void) {
   const logs: string[] = [];
   const traces: unknown[] = [];
   // test-only logging for assertion capture
@@ -164,7 +171,7 @@ async function setup(name: string, publishedNull: boolean, firstResponseGate?: P
   const dataDir = join(mkdtempSync(join(tmpdir(), `integration-2b-${name}-`)), "data");
   execFileSync("uv", ["run", "python", "agent-runtime/test/helpers/seed_bank_rate.py", dataDir, "5.25", ...(publishedNull ? ["--published-null"] : [])], { cwd: worktreeRoot });
   const launcher = new RecordingLauncher(dataDir);
-  const script = scriptedTurn(launcher, firstResponseGate);
+  const script = scriptedTurn(launcher, firstResponseGate, onGateEntered);
   const faux = createFauxModels(script);
   process.env.PI_MODEL = FAUX_MODEL_REF;
   const app = await createApp({
@@ -183,12 +190,12 @@ async function setup(name: string, publishedNull: boolean, firstResponseGate?: P
   };
 }
 
-function scriptedTurn(launcher: RecordingLauncher, gate?: Promise<void>): readonly FauxResponseStep[] {
+function scriptedTurn(launcher: RecordingLauncher, gate?: Promise<void>, onGateEntered?: () => void): readonly FauxResponseStep[] {
   const query = fauxAssistantMessage(fauxToolCall("query_market_data", { capability_id: "uk.bank-rate-current", query_kind: "metrics", limit: 1 }), { stopReason: "toolUse" });
   const citation = () => fauxAssistantMessage(fauxToolCall("get_citation_metadata", { citation_refs: queryRecord(launcher)["citation_refs"] }), { stopReason: "toolUse" });
   return [
     query,
-    gate === undefined ? citation : async () => { await gate; return citation(); },
+    gate === undefined ? citation : async () => { onGateEntered?.(); await gate; return citation(); },
     () => {
       const refs = queryRecord(launcher)["citation_refs"];
       assert.ok(Array.isArray(refs) && typeof refs[0] === "string");
@@ -244,7 +251,7 @@ function openSse(origin: string, session: Session, lastEventId: string | null) {
 
 function terminal(events: readonly AgentEventV1[], turnId: string): boolean { return events.some((event) => event.turn_id === turnId && (event.type === "turn.completed" || event.type === "turn.failed")); }
 function artifactFrom(events: readonly AgentEventV1[]): unknown { return record(events.find((event) => event.type === "artifact.final")?.payload)["artifact"]; }
-function assertArtifact(value: unknown, publishedNull: boolean): void { const artifact = record(value); const facts = artifact["facts"]; assert.ok(Array.isArray(facts)); assert.equal(record(facts[0])["numeric_value"], "5.25"); const sources = artifact["sources"]; assert.ok(Array.isArray(sources)); assert.match(String(record(sources[0])["public_url"]), /^https:\/\//); assert.equal(typeof artifact["lineage"], "object"); assert.equal(artifact["published_at"], publishedNull ? null : "2026-08-01T09:00:00.000000Z"); assert.equal(artifact["publication_date_warning"], publishedNull); assert.equal(record(artifact["datasource_confidence"])["bank-rate"], "high"); assert.equal(record(artifact["fact_confidence"])["bank-rate"], "medium"); assert.equal(record(artifact["inference_confidence"])["outlook"], "low"); if (publishedNull) assert.match(String(artifact["display_text"]), /Publication date unavailable/); }
+function assertArtifact(value: unknown, publishedNull: boolean): void { const artifact = record(value); const facts = artifact["facts"]; assert.ok(Array.isArray(facts)); assert.equal(record(facts[0])["numeric_value"], "5.25"); const sources = artifact["sources"]; assert.ok(Array.isArray(sources)); assert.match(String(record(sources[0])["public_url"]), /^https:\/\//); assert.equal(record(sources[0])["citation_ref"], "source-1"); assert.equal(record(sources[0])["source_alias"], "Source 1"); const lineage = record(artifact["lineage"]); assert.deepEqual(record(lineage["bank-rate"])["citation_refs"], ["source-1"]); assert.equal(artifact["published_at"], publishedNull ? null : "2026-08-01T09:00:00.000000Z"); assert.equal(artifact["publication_date_warning"], publishedNull); assert.equal(record(artifact["datasource_confidence"])["bank-rate"], "high"); assert.equal(record(artifact["fact_confidence"])["bank-rate"], "medium"); assert.equal(record(artifact["inference_confidence"])["outlook"], "low"); if (publishedNull) assert.match(String(artifact["display_text"]), /Publication date unavailable/); }
 function record(value: unknown): Readonly<Record<string, unknown>> { assert.ok(isRecord(value)); return value; }
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function writeEvidence(name: string, value: unknown): void { mkdirSync(evidenceRoot, { recursive: true }); writeFileSync(join(evidenceRoot, name), `${JSON.stringify(value, null, 2)}\n`); }

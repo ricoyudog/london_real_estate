@@ -34,6 +34,7 @@ const elements = {
 
 const state = {
   activeTurnId: null,
+  artifactSupported: null,
   cancelling: false,
   closed: false,
   eventController: null,
@@ -441,6 +442,7 @@ function handleRuntimeEvent(type, event) {
       return;
     case "turn.started":
       state.activeTurnId = turnId ?? state.activeTurnId;
+      state.artifactSupported = null;
       renderRuntimeIdentity(payload);
       elements.turnStatus.textContent = "The analyst is gathering host-validated evidence…";
       setBriefStatus("Working", "waiting");
@@ -453,6 +455,7 @@ function handleRuntimeEvent(type, event) {
       elements.turnStatus.textContent = "The host is completing a required policy check.";
       return;
     case "artifact.final":
+      state.artifactSupported = isMarketBrief(payload.artifact);
       renderArtifact(payload.artifact);
       setBriefStatus(artifactStatus(payload.artifact), artifactStatusKey(payload.artifact));
       appendArtifactMessage(payload.artifact);
@@ -462,7 +465,14 @@ function handleRuntimeEvent(type, event) {
         renderFailure("TURN_CANCELLED");
         setBriefStatus("Cancelled", "unavailable");
       }
-      finishTurn(turnId, payload.terminal_state === "cancelled" ? "The turn was cancelled." : "The final brief is ready.");
+      finishTurn(
+        turnId,
+        payload.terminal_state === "cancelled"
+          ? "The turn was cancelled."
+          : state.artifactSupported === false
+            ? "The host returned an unsupported final artifact."
+            : "The final brief is ready.",
+      );
       return;
     case "turn.failed":
       renderFailure(scalar(payload.reason_code));
@@ -542,6 +552,11 @@ function renderArtifact(artifact) {
     return;
   }
 
+  if (artifact.schema_version !== "market_brief.v1") {
+    renderUnknownArtifact();
+    return;
+  }
+
   const title = scalar(artifact.title) ?? "Host-validated market brief";
   const heading = document.createElement("h3");
   heading.className = "artifact-title";
@@ -561,10 +576,8 @@ function renderArtifact(artifact) {
   renderFacts(artifact.facts, artifact.fact_confidence, artifact.datasource_confidence);
   renderInferences(artifact.inferences, artifact.inference_confidence);
   renderLimitations(artifact.limitations);
-  renderLineage(artifact.lineage);
+  renderLineage(artifact.lineage, sourceAliases(artifact.sources));
   renderSources(artifact.sources);
-
-  if (artifact.schema_version !== "market_brief.v1") renderUnknownArtifact(artifact);
 }
 
 function renderArtifactOverview(artifact) {
@@ -710,7 +723,7 @@ function renderLimitations(limitations) {
   }
 }
 
-function renderLineage(lineage) {
+function renderLineage(lineage, aliases) {
   if (!isRecord(lineage) || Object.keys(lineage).length === 0) return;
   const section = artifactSection("Lineage");
   const list = document.createElement("dl");
@@ -723,7 +736,8 @@ function renderLineage(lineage) {
     const term = document.createElement("dt");
     const description = document.createElement("dd");
     term.textContent = claimId;
-    description.textContent = `Observations: ${observationIds.join(", ") || "none"} · Citations: ${citationRefs.join(", ") || "none"}`;
+    const sourceLabels = citationRefs.map((ref) => aliases.get(ref) ?? ref);
+    description.textContent = `Observations: ${observationIds.join(", ") || "none"} · Sources: ${sourceLabels.join(", ") || "none"}`;
     group.append(term, description);
     list.append(group);
   }
@@ -740,16 +754,18 @@ function renderSources(sources) {
     if (!isRecord(source)) continue;
     const name = scalar(source.source);
     if (name === null) continue;
+    const alias = scalar(source.source_alias) ?? "Source";
+    const label = `${alias} — ${name}`;
     const item = document.createElement("li");
     const sourceUrl = safeHttpUrl(source.public_url);
     if (sourceUrl === null) {
-      item.append(name);
+      item.append(label);
     } else {
       const link = document.createElement("a");
       link.href = sourceUrl;
       link.target = "_blank";
       link.rel = "noreferrer";
-      link.textContent = name;
+      link.textContent = label;
       item.append(link);
     }
     const publishedAt = scalar(source.published_at);
@@ -767,13 +783,23 @@ function renderSources(sources) {
   }
 }
 
-function renderUnknownArtifact(artifact) {
-  const section = artifactSection("Final artifact");
-  const pre = document.createElement("pre");
-  pre.className = "artifact-json";
-  pre.textContent = JSON.stringify(artifact, null, 2);
-  section.append(pre);
-  elements.artifactContent.append(section);
+function sourceAliases(sources) {
+  const aliases = new Map();
+  if (!Array.isArray(sources)) return aliases;
+  for (const source of sources) {
+    if (!isRecord(source)) continue;
+    const ref = scalar(source.citation_ref);
+    const alias = scalar(source.source_alias);
+    if (ref !== null && alias !== null) aliases.set(ref, alias);
+  }
+  return aliases;
+}
+
+function renderUnknownArtifact() {
+  const message = document.createElement("p");
+  message.className = "empty-artifact empty-artifact--failure";
+  message.textContent = "The host returned an unsupported final artifact.";
+  elements.artifactContent.append(message);
 }
 
 function artifactSection(title) {
@@ -799,7 +825,7 @@ function appendMessage(kind, label, content) {
 }
 
 function appendArtifactMessage(artifact) {
-  if (!isRecord(artifact)) return;
+  if (!isMarketBrief(artifact)) return;
   const title = scalar(artifact.title) ?? "A final host-validated brief";
   const fact = Array.isArray(artifact.facts) ? artifact.facts.find((item) => isRecord(item) && item.kind === "numeric") : undefined;
   const value = isRecord(fact) ? scalar(fact.numeric_value) : null;
@@ -878,11 +904,15 @@ function humanStatus(status) {
 }
 
 function artifactStatus(artifact) {
-  return isRecord(artifact) ? humanStatus(scalar(artifact.status) ?? "complete") : "Unavailable";
+  return isMarketBrief(artifact) ? humanStatus(scalar(artifact.status) ?? "unavailable") : "Unavailable";
 }
 
 function artifactStatusKey(artifact) {
-  return isRecord(artifact) ? scalar(artifact.status) ?? "complete" : "unavailable";
+  return isMarketBrief(artifact) ? scalar(artifact.status) ?? "unavailable" : "unavailable";
+}
+
+function isMarketBrief(artifact) {
+  return isRecord(artifact) && artifact.schema_version === "market_brief.v1";
 }
 
 function safeHttpUrl(value) {

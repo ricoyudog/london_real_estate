@@ -11,6 +11,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 
 import { ApprovalCoordinator, type PendingApproval } from "../src/approval.ts";
 import { createApp } from "../src/app.ts";
+import { projectArtifactForBrowser } from "../src/browser-artifact.ts";
 import { FacadeLauncher, type ToolResult } from "../src/facade-launcher.ts";
 import { createServer } from "../src/http.ts";
 import { RecoveryStore } from "../src/recovery.ts";
@@ -37,10 +38,11 @@ test("(a) approve while streaming queues one follow-up on the same logical turn"
   assert.equal(fixture.hub.events(fixture.sessionId).filter((event) => event.type === "turn.started").length, 1);
   assert.equal(fixture.hub.events(fixture.sessionId).filter(terminal).length, 1);
   assert.equal(fixture.hub.events(fixture.sessionId).some((event) => event.type === "artifact.final"), true);
-  assert.equal(fixture.hub.events(fixture.sessionId).find((event) => event.type === "artifact.final")?.payload["artifact"], fixture.artifact);
+  const browserArtifact = projectArtifactForBrowser(fixture.artifact);
+  assert.deepEqual(fixture.hub.events(fixture.sessionId).find((event) => event.type === "artifact.final")?.payload["artifact"], browserArtifact);
   const recovered = fixture.recovery.recover(fixture.sessionId, "turn-ons");
   assert.equal(recovered.ok, true);
-  if (recovered.ok) assert.deepEqual(recovered.turn.artifact, { artifact: fixture.artifact });
+  if (recovered.ok) assert.deepEqual(recovered.turn.artifact, { artifact: browserArtifact });
 });
 
 test("approved continuation emits one failed terminal when resume throws", async () => {

@@ -35,9 +35,12 @@ test("renders only the final artifact with freshness, confidence, lineage and sa
   await expect(page.locator("#artifact-content")).toContainText("Datasource confidence: High");
   await expect(page.locator("#artifact-content")).toContainText("Inference confidence: Low");
   await expect(page.locator("#artifact-content")).toContainText("Lineage");
+  await expect(page.locator("body")).toContainText("Sources: Source 1");
+  await expect(page.locator("body")).not.toContainText("h1.");
   await expect(page.locator("#artifact-content")).toContainText("As of");
   const source = page.locator("#source-list a").first();
   await expect(source).toHaveAttribute("href", /^https?:\/\//);
+  await expect(source).toContainText("Source 1");
   await expect(page.locator("#transcript")).not.toContainText("4%", { useInnerText: true });
 });
 
@@ -48,6 +51,32 @@ test("writes a direct host-validated answer and source to the transcript", async
   const answer = page.locator(".message--assistant").last();
   await expect(answer).toContainText("Bank Rate brief: 5.25 percent.");
   await expect(answer).toContainText("Source: Bank of England.");
+});
+
+test("marks an unsupported artifact unavailable without rendering its raw payload", async ({ page }) => {
+  await page.route("**/v1/sessions/*/events", async (route) => {
+    const event = (sequence: number, type: string, payload: Readonly<Record<string, unknown>>) => [
+      `id: ${sequence}-browser-test`,
+      `event: ${type}`,
+      `data: ${JSON.stringify({ schema_version: "agent_event.v1", sequence, event_id: `${sequence}-browser-test`, session_id: "browser-test", turn_id: "unsupported-turn", timestamp: "2026-08-03T00:00:00Z", type, payload })}`,
+      "",
+      "",
+    ].join("\n");
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: event(1, "artifact.final", { artifact: { schema_version: "unsupported_artifact.v1", message: "safe", secret: "h1.raw-handle" } })
+        + event(2, "turn.completed", { terminal_state: "completed" }),
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.locator("#artifact-content")).toContainText("The host returned an unsupported final artifact.");
+  await expect(page.locator("#brief-status")).toHaveText("Unavailable");
+  await expect(page.locator("#turn-status")).toContainText("unsupported final artifact");
+  await expect(page.locator("#transcript")).not.toContainText("Final artifact");
+  await expect(page.locator("body")).not.toContainText("h1.raw-handle");
+  await page.goto("about:blank");
 });
 
 test("clears a previous result on safe failure, then supports cancel and retry", async ({ page }) => {
