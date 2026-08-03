@@ -1,47 +1,34 @@
 ---
 name: track-office-supply
-description: Search free Planning London Datahub records and VOA stock data for London office supply signals. Use for new-build, refurbishment, change-of-use, phasing, approval, completion, and annual stock research.
+description: Route London office supply questions through the typed agent facade. Surfaces the in-scope planning-activity proxy and the explicitly blocked project-supply (with floorspace) capability.
+type: skill
 ---
 
 # Track Office Supply
 
-## Find planning candidates
+Office supply has two product surfaces, both reachable through `describe_market_data`. The model has no Python source access; every fact must come through the facade.
 
-Search PLD with narrow date and office terms, requesting only fields needed for triage:
+## Start with coverage
 
-```python
-from nan_fung.datasources.planning import search_planning_applications
+Call `describe_market_data` before any query. Two capabilities are relevant:
 
-candidates = search_planning_applications(
-    {
-        "bool": {
-            "must": [{"match_phrase": {"description": "office"}}],
-            "filter": [{"range": {"valid_date": {"gte": "01/01/2025"}}}],
-        }
-    },
-    source_fields=[
-        "id", "lpa_name", "valid_date", "last_updated", "status", "decision",
-        "description", "development_type", "application_details.non_residential_details",
-    ],
-)
+- `london-planning-activity` — `supported`. Counts planning applications decided per London authority per month. It is activity, not floorspace, and includes all use classes; treat it as a planning proxy, never as delivered office supply.
+- `london-project-supply` — `blocked`. Office project supply with floorspace, completion, and change-of-use detail is not approved. The capability carries the canonical `blocked_reason`; quote it verbatim when the user asks for that coverage.
+
+## Query the supported proxy
+
+For `london-planning-activity` call `query_market_data` with:
+
+```json
+{ "capability_id": "london-planning-activity", "query_kind": "metrics" }
 ```
 
-Treat the returned page as candidate triage, not an exhaustive pipeline: the helper does not expose total hits, stable sorting, or pagination. Fetch every retained candidate by id:
+Preserve `anchor_as_of`, `numeric.value`, `numeric.unit`, `numeric.definition`, `source_date`, `retrieval_freshness`, `observation_freshness`, `degraded`, and any warnings. Borough-level granularity only; named submarkets (Mayfair, City of London) are not available from this capability.
 
-```python
-from nan_fung.datasources.planning import fetch_planning_application
+Resolve `citation_refs` with `get_citation_metadata` (≤20 refs per call). A numeric fact needs a resolved citation before it can be presented.
 
-application = fetch_planning_application(candidate_id)
-```
+## Handle blocked coverage
 
-## Qualify supply
+If the user asks for proposed/approved office floorspace, GIA gained, completion dates, refurbishment pipelines, or any specific project supply figure, do not improvise one from planning counts. Use the `blocked_reason` from `london-project-supply` as the limitation text and submit a `partial` or `unavailable` brief. Never derive a supply number from planning-activity counts.
 
-Check use class, GIA gained and lost, development type, phasing, commencement/completion dates, decision, and linked/superseded fields when the source supplies them. Treat missing or null as unknown, not zero or false. Treat `Approved` as permission, not delivery. Reject address-numbering and incidental-office matches that do not alter supply.
-
-Use VOA office-property counts only as an annual stock baseline. Keep report-derived development and pre-let claims separate from planning facts.
-
-Read [supply pipeline](../../wiki/research/datasource/04-supply-pipeline.md) and [stock/availability](../../wiki/research/datasource/02-office-stock-availability.md) for endpoint, attribution, and data-quality limits.
-
-## Report
-
-Return application id, LPA, dates, status, description, GIA change, phase, source URL, and `last_updated`. State confidence and missing fields. Do not list paid datasets as successful sources.
+After data gathering, hand off to `generate-grounded-market-brief` and complete its required `finalize_market_brief` step.

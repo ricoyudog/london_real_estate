@@ -1,4 +1,4 @@
 interface:
   display_name: "Track Office Supply"
-  short_description: "Track free London planning and office stock signals"
-  default_prompt: "Use $track-office-supply to inspect London office planning and stock signals."
+  short_description: "Route London office supply questions through the typed facade"
+  default_prompt: "Use $track-office-supply to surface the in-scope planning-activity proxy and the blocked project-supply coverage through the typed agent facade."

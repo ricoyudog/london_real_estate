@@ -10,6 +10,11 @@
       "path": "skills/generate-grounded-market-brief/SKILL.md",
       "sha256": "07cfe3c9dfe05aab60aaea3324e59df9b548b5dc269246addafa9e89bc59174a",
       "bytes": 2874
+    },
+    {
+      "path": "skills/track-office-supply/SKILL.md",
+      "sha256": "62a8de2e68f913091380f0e26e6a22c5670e1862120cf7089bf21e4aa3c216da",
+      "bytes": 2172
     }
   ]
 }
