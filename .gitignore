@@ -30,6 +30,7 @@ agent-runtime/playwright-report/
 
 # Canonical state and immutable evidence are host-local.
 data/
+.test-data-*/
 
 # Editor / OS
 .DS_Store

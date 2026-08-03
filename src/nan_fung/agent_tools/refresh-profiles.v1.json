@@ -19,6 +19,21 @@
     },
     {
       "schema_version": "agent_tool_refresh_profile.v1",
+      "profile_id": "planning-activity-monthly",
+      "datasource_id": "pld.applications_search",
+      "capability_ids": ["london-planning-activity"],
+      "allowed_scope_keys": ["window_months"],
+      "required_scope_keys": ["window_months"],
+      "single_value_scope_keys": ["window_months"],
+      "max_scope_values": 1,
+      "definition_version": 1,
+      "effective_lane": "production_ingestion",
+      "promotion_policy": "registry_selected",
+      "poll_after_seconds": 2,
+      "freshness_precheck": null
+    },
+    {
+      "schema_version": "agent_tool_refresh_profile.v1",
       "profile_id": "onspd-one-postcode",
       "datasource_id": "ons.onspd.postcode",
       "capability_ids": ["uk.postcode-resolution"],

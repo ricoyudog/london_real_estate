@@ -143,9 +143,9 @@ def test_seed_registry_marks_only_fixed_production_workflows_runtime_ready() -> 
     assert bank_rate.capabilities["runtime_migration"] == "bound"
     assert ons.capabilities["runtime_migration"] == "bound"
     assert ons.capabilities["backfill"] == "unsupported_current_vintage"
-    assert pld.status == "discovery"
-    assert pld.default_lane == "source_discovery"
-    assert pld.promotion_policy == "never_canonical"
+    assert pld.status == "production"
+    assert pld.default_lane == "production_ingestion"
+    assert pld.promotion_policy == "automatic"
     assert rightmove.automation_mode == "manual"
     assert rightmove.access_class == "reference_only"
 
@@ -153,6 +153,7 @@ def test_seed_registry_marks_only_fixed_production_workflows_runtime_ready() -> 
     assert status["boe.bank_rate.iudbedr@1"].ready
     assert status["ons.gdp.ecyx@1"].ready
     assert status["nomis.nm_59_1.london_lfs@1"].ready
+    assert status["pld.applications_search@1"].ready
     assert not status["boe.mpc_news@1"].ready
     assert not status["rightmove.commercial_insights_tracker@1"].ready
 

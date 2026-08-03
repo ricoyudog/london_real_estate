@@ -29,9 +29,18 @@ from nan_fung.ingestion.onspd_lifecycle import (
     acquire_live_onspd_postcode,
     ingest_onspd_postcode_artifacts,
 )
+from nan_fung.ingestion.pld_supply import (
+    PLD_APPLICATIONS_SEARCH_DATASOURCE_ID,
+    PLDArtifact,
+)
 from nan_fung.datasources.geography import normalize_postcode
 from nan_fung.operational import OperationalError, OperationalStore, RunHandle, WriterAlreadyRunningError
-from nan_fung.workflows import acquire_live_bank_rate, ingest_bank_rate_artifact
+from nan_fung.workflows import (
+    acquire_live_bank_rate,
+    acquire_live_planning_applications,
+    ingest_bank_rate_artifact,
+    ingest_planning_applications_artifact,
+)
 
 
 _MAX_RESIDENT_POLL_SECONDS = 120.0
@@ -76,6 +85,8 @@ class DatasourceSupervisor:
         worker_id: str,
         bank_rate_collector: Callable[[Mapping[str, object]], BankRateArtifact]
         | None = None,
+        pld_collector: Callable[[Mapping[str, object]], PLDArtifact]
+        | None = None,
         official_macro_collector: Callable[
             [str, Mapping[str, object]], OfficialMacroArtifact
         ]
@@ -96,6 +107,7 @@ class DatasourceSupervisor:
         self._store = store
         self._worker_id = worker_id
         self._bank_rate_collector = bank_rate_collector
+        self._pld_collector = pld_collector
         self._official_macro_collector = official_macro_collector
         self._file_release_collector = file_release_collector
         self._onspd_collector = onspd_collector
@@ -189,6 +201,7 @@ class DatasourceSupervisor:
             run = self._store.start_run(claim, self._worker_id, now=anchor)
             if claim.datasource_id not in {
                 BANK_RATE_DATASOURCE_ID,
+                PLD_APPLICATIONS_SEARCH_DATASOURCE_ID,
                 *OFFICIAL_MACRO_AUTOMATIC_DATASOURCE_IDS,
                 *FILE_RELEASE_AUTOMATIC_DATASOURCE_IDS,
                 ONSPD_DATASOURCE_ID,
@@ -308,6 +321,33 @@ class DatasourceSupervisor:
                     execution_at = _utc(run_clock())
                     self._store.heartbeat(run, now=execution_at)
                     result = ingest_bank_rate_artifact(
+                        self._store,
+                        artifact,
+                        lane=run.lane,
+                        worker_id=self._worker_id,
+                        existing_run=run,
+                        execution_at=execution_at,
+                        window_start=(backfill_window[0] if backfill_window else None),
+                        window_end=(backfill_window[1] if backfill_window else None),
+                    )
+                elif claim.datasource_id == PLD_APPLICATIONS_SEARCH_DATASOURCE_ID:
+                    backfill_window = _claimed_backfill_window(
+                        claim.job_kind, claim.window_start, claim.window_end
+                    )
+                    artifact = (
+                        self._pld_collector(claim.request)
+                        if self._pld_collector is not None
+                        else self._collect_live_planning_applications(
+                            run,
+                            host_gate=self._store.host_throttle_gate(
+                                clock=lambda: _utc(run_clock())
+                            ),
+                            clock=run_clock,
+                        )
+                    )
+                    execution_at = _utc(run_clock())
+                    self._store.heartbeat(run, now=execution_at)
+                    result = ingest_planning_applications_artifact(
                         self._store,
                         artifact,
                         lane=run.lane,
@@ -522,6 +562,23 @@ class DatasourceSupervisor:
             backfill_window=backfill_window,
         )
 
+    def _collect_live_planning_applications(
+        self,
+        run: RunHandle,
+        *,
+        host_gate: HostRequestGate,
+        clock: Callable[[], datetime],
+    ) -> PLDArtifact:
+        if not self._allow_network:
+            raise OperationalError("live collection requires explicit network opt-in")
+        return _collect_planning_applications(
+            self._store,
+            run,
+            host_gate=host_gate,
+            clock=clock,
+            resolver=self._resolver,
+        )
+
     def _collect_live_official_macro(
         self,
         run: RunHandle,
@@ -618,6 +675,38 @@ def _collect_bank_rate(
     return acquire_live_bank_rate(
         date_from=str(date_from) if date_from else "01/Jan/2025",
         date_to=str(date_to) if date_to else "now",
+        host_gate=host_gate,
+        artifact_store=store.artifacts,
+        before_publish=preflight,
+        resolver=resolver,
+    )
+
+
+def _collect_planning_applications(
+    store: OperationalStore,
+    run: RunHandle,
+    *,
+    host_gate: HostRequestGate,
+    clock: Callable[[], datetime],
+    resolver: Callable[[str], Iterable[str]] | None,
+) -> PLDArtifact:
+    def preflight(metadata: AcquisitionMetadata) -> None:
+        execution_at = _utc(clock())
+        store.heartbeat(run, now=execution_at)
+        store.preflight_evidence(
+            run,
+            request={"method": metadata.method, "url": metadata.request_url},
+            response={
+                "status": metadata.status,
+                "final_url": metadata.final_url,
+                "headers": dict(metadata.headers),
+            },
+            source_id="pld.api",
+            retrieved_at=datetime.fromisoformat(metadata.retrieved_at),
+            now=execution_at,
+        )
+
+    return acquire_live_planning_applications(
         host_gate=host_gate,
         artifact_store=store.artifacts,
         before_publish=preflight,

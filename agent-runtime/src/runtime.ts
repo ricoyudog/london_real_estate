@@ -32,7 +32,7 @@ export const defaultTurnLimits = {
   cumulativeCitations: 40,
   cumulativeModelToolBytes: 128 * 1024,
   refreshWaitMs: 15_000,
-  turnDeadlineMs: 45_000,
+  turnDeadlineMs: 120_000,
   renderedTokens: 4096,
 } as const satisfies TurnLimits;
 

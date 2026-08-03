@@ -35,6 +35,20 @@ from nan_fung.ingestion.bank_rate import (
     StoredAcquiredArtifact,
     parse_bank_rate_csv_isolated,
 )
+from nan_fung.ingestion.pld_supply import (
+    PLD_APPLICATIONS_SEARCH_DATASOURCE_ID,
+    PLD_APPLICATIONS_SEARCH_URL,
+    PLDArtifact,
+    PLDApplicationsSearchLifecycle,
+    PLDError,
+    PLDLifecycleResult,
+    PLDRecord,
+    PLDRun,
+    PLD_SOURCE_POLICY,
+    PersistedEvidence as PLDEvidence,
+    StoredAcquiredArtifact as PLDStoredAcquiredArtifact,
+    parse_planning_applications_csv_isolated,
+)
 from nan_fung.ingestion.canonical import thaw_json
 from nan_fung.ingestion.registry import BindingDescriptor, SourceBinding
 from nan_fung.operational import OperationalError, OperationalStore, PersistedEvidence, RunHandle
@@ -442,4 +456,298 @@ def reparse_bank_rate_evidence(
         job_trigger="reparse",
         job_kind="offline_reparse",
         job_request={"reparse_evidence_id": evidence_id},
+    )
+
+
+_PLD_MAX_STREAM_SECONDS = 300  # Full CSV is large; allow 5 minutes.
+_PLD_MAX_BYTES = 200 * 1024 * 1024  # planning-application.csv is ~45 MB; allow headroom.
+
+
+class OperationalPLDPersistence:
+    """Adapt the generic PLD lifecycle to the SQLite/CAS single writer."""
+
+    def __init__(
+        self,
+        store: OperationalStore,
+        *,
+        worker_id: str,
+        existing_run: RunHandle | None = None,
+        execution_at: datetime | None = None,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+        job_trigger: str = "manual",
+        job_kind: str | None = None,
+        job_request: Mapping[str, Any] | None = None,
+    ) -> None:
+        if not worker_id:
+            raise ValueError("worker_id is required")
+        self._store = store
+        self._worker_id = worker_id
+        self._runs: dict[str, RunHandle] = {}
+        self._evidence: dict[str, PersistedEvidence] = {}
+        self._promotion_requested: set[str] = set()
+        self._existing_run = existing_run
+        self._execution_at = (execution_at or datetime.now(UTC)).astimezone(UTC)
+        if (window_start is None) != (window_end is None):
+            raise PLDError("PLD backfill window requires both bounds")
+        self._window_start = window_start.astimezone(UTC) if window_start else None
+        self._window_end = window_end.astimezone(UTC) if window_end else None
+        self._job_trigger = job_trigger
+        self._job_kind = job_kind
+        self._job_request = dict(job_request) if job_request is not None else None
+
+    def create_run(self, run: PLDRun) -> str:
+        if run.datasource_id != PLD_APPLICATIONS_SEARCH_DATASOURCE_ID:
+            raise PLDError("OperationalPLDPersistence only owns PLD applications_search")
+        if self._existing_run is not None:
+            handle = self._existing_run
+            if (
+                handle.datasource_id != run.datasource_id
+                or handle.definition_version != run.definition_version
+                or handle.lane != run.lane
+            ):
+                raise PLDError("claimed job does not match PLD lifecycle")
+            self._runs[handle.run_id] = handle
+            self._existing_run = None
+            return handle.run_id
+        queued = self._store.enqueue(
+            run.datasource_id,
+            definition_version=run.definition_version,
+            request=(
+                self._job_request
+                if self._job_request is not None
+                else thaw_json(run.request)
+            ),
+            trigger=self._job_trigger,
+            lane=run.lane,
+            scheduled_for=self._execution_at,
+            request_instance_id=run.run_id,
+            job_kind=self._job_kind,
+        )
+        claim = self._store.claim_job(
+            queued.job_id, self._worker_id, now=self._execution_at
+        )
+        if claim is None:
+            raise OperationalError("PLD job could not be claimed")
+        handle = self._store.start_run(claim, self._worker_id, now=self._execution_at)
+        self._runs[handle.run_id] = handle
+        return handle.run_id
+
+    def persist_evidence(self, run_id: str, artifact: PLDArtifact) -> PLDEvidence:
+        handle = self._run(run_id)
+        request_url = (
+            artifact.request_url
+            if isinstance(artifact, PLDStoredAcquiredArtifact)
+            else artifact.source_url
+        )
+        evidence_kwargs = {
+            "media_type": artifact.media_type,
+            "retrieved_at": artifact.retrieved_at,
+            "request": {
+                "method": "GET",
+                "url": request_url,
+            },
+            "response": {
+                "status": artifact.status,
+                "final_url": artifact.source_url,
+                "headers": thaw_json(artifact.headers),
+            },
+            "now": self._execution_at,
+        }
+        if isinstance(artifact, PLDStoredAcquiredArtifact):
+            persisted = self._store.persist_evidence(
+                handle, artifact=artifact.artifact, **evidence_kwargs,
+            )
+        else:
+            persisted = self._store.persist_evidence(
+                handle, artifact.body, **evidence_kwargs,
+            )
+        self._evidence[persisted.evidence_id] = persisted
+        return PLDEvidence(persisted.evidence_id, persisted.artifact.content_sha256)
+
+    def read_evidence(self, evidence: PLDEvidence) -> bytes:
+        return self._store.read_evidence(evidence.evidence_id)
+
+    def persist_observation(
+        self,
+        run_id: str,
+        evidence: PLDEvidence,
+        record: PLDRecord,
+        *,
+        lane: str,
+    ) -> str:
+        handle = self._run(run_id)
+        if handle.lane != lane:
+            raise PLDError("PLD run lane does not match record lane")
+        if self._window_start is not None and self._window_end is not None:
+            from datetime import date as _date
+
+            period_start = _date(record.period_year, record.period_month, 1)
+            if not (self._window_start.date() <= period_start <= self._window_end.date()):
+                raise PLDError("PLD record period is outside the requested backfill window")
+        try:
+            persisted = self._evidence[evidence.evidence_id]
+        except KeyError as error:
+            raise PLDError("unknown PLD evidence") from error
+        return self._store.persist_observation(
+            handle,
+            record_key=record.record_key,
+            payload=record.payload,
+            record_type="metric",
+            category="planning_activity",
+            evidence=(persisted,),
+            source_date=f"{record.period_year:04d}-{record.period_month:02d}-01",
+            unit="count",
+            definition_text=(
+                "Monthly count of decided planning applications per London "
+                "planning authority, aggregated from Crown-copyright "
+                "planning.data.gov.uk planning-application dataset."
+            ),
+            limitations=(
+                "Borough-level granularity only; named submarkets require polygon overlay.",
+                "Includes all use classes, not office-specific.",
+                "Applicant-supplied source data; confidence=medium.",
+            ),
+            now=self._execution_at,
+        )
+
+    def promote(
+        self, run_id: str, observation_ids: Sequence[str], *, lane: str
+    ) -> bool:
+        if lane != "production_ingestion":
+            return False
+        self._run(run_id)
+        if not observation_ids:
+            return False
+        self._promotion_requested.add(run_id)
+        return True
+
+    def finish_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        error: Mapping[str, str] | None = None,
+    ) -> None:
+        handle = self._run(run_id)
+        self._store.finish_run(
+            handle,
+            status=status,
+            error=error,
+            promote=status == "succeeded" and run_id in self._promotion_requested,
+            now=self._execution_at,
+        )
+
+    def _run(self, run_id: str) -> RunHandle:
+        try:
+            return self._runs[run_id]
+        except KeyError as error:
+            raise PLDError("unknown PLD run") from error
+
+
+def _require_static_pld_contract(
+    store: OperationalStore, definition_version: int | None
+) -> None:
+    """Fail closed when PLD definition requires a new bound lifecycle."""
+
+    definition = store.registry.lookup(
+        PLD_APPLICATIONS_SEARCH_DATASOURCE_ID, definition_version
+    )
+    expected = (
+        BindingDescriptor("collector", "pld_applications_search.collector", "v1"),
+        BindingDescriptor("parser", "pld_applications_search.parser", "v1"),
+        BindingDescriptor("record_key", "pld_applications_search.record_key", "v1"),
+    )
+    actual = (
+        definition.collector_binding,
+        definition.parser_binding,
+        definition.record_key_binding,
+    )
+    if actual != expected or definition.source_bindings != (SourceBinding("pld.api"),):
+        raise PLDError("PLD definition requires a new bound lifecycle")
+
+
+def ingest_planning_applications_artifact(
+    store: OperationalStore,
+    artifact: PLDArtifact,
+    *,
+    lane: str = "production_ingestion",
+    worker_id: str = "pld-worker",
+    isolate_parser: bool = True,
+    existing_run: RunHandle | None = None,
+    definition_version: int | None = None,
+    execution_at: datetime | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
+    job_trigger: str = "manual",
+    job_kind: str | None = None,
+    job_request: Mapping[str, Any] | None = None,
+) -> PLDLifecycleResult:
+    """Run the complete PLD planning-application lifecycle from an acquired artifact."""
+
+    if (
+        existing_run is not None
+        and definition_version is not None
+        and existing_run.definition_version != definition_version
+    ):
+        raise PLDError("claimed job does not match PLD definition version")
+    effective_definition_version = (
+        existing_run.definition_version if existing_run is not None else definition_version
+    )
+    _require_static_pld_contract(store, effective_definition_version)
+    parser = parse_planning_applications_csv_isolated if isolate_parser else None
+    if parser is None:
+        from nan_fung.ingestion.pld_supply import parse_planning_applications_csv as parser  # type: ignore[no-redef]
+    lifecycle = PLDApplicationsSearchLifecycle(
+        OperationalPLDPersistence(
+            store,
+            worker_id=worker_id,
+            existing_run=existing_run,
+            execution_at=execution_at,
+            window_start=window_start,
+            window_end=window_end,
+            job_trigger=job_trigger,
+            job_kind=job_kind,
+            job_request=job_request,
+        ),
+        registry=store.registry,
+        bindings=store.runtime_bindings,
+        record_parser=parser,
+    )
+    return lifecycle.ingest(
+        artifact,
+        lane=lane,
+        requested_at=artifact.retrieved_at,
+        definition_version=effective_definition_version,
+    )
+
+
+def acquire_live_planning_applications(
+    *,
+    artifact_store: ArtifactStore,
+    host_gate: HostRequestGate | None = None,
+    before_publish: Callable[[AcquisitionMetadata], None] | None = None,
+    resolver: Callable[[str], Iterable[str]] | None = None,
+) -> PLDStoredAcquiredArtifact:
+    """Acquire the full planning-application CSV into a content-addressed artifact."""
+
+    response = acquire_to_artifact(
+        PLD_APPLICATIONS_SEARCH_URL,
+        policy=PLD_SOURCE_POLICY,
+        host_gate=host_gate,
+        artifact_store=artifact_store,
+        before_publish=before_publish,
+        max_stream_seconds=_PLD_MAX_STREAM_SECONDS,
+        max_bytes=_PLD_MAX_BYTES,
+        resolver=resolver,
+        require_full_response=True,
+    )
+    return PLDStoredAcquiredArtifact(
+        artifact=response.artifact,
+        request_url=response.request_url,
+        source_url=response.final_url,
+        retrieved_at=datetime.fromisoformat(response.retrieved_at),
+        status=response.status,
+        headers=response.headers,
+        media_type=response.artifact.media_type or "text/csv",
     )

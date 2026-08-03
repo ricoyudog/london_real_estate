@@ -417,3 +417,37 @@ and lifecycle check.
 For a wheel-install drill, repeat `db migrate` and `health` using the installed
 wheel and a new temporary data directory.  Keep this check separate from an
 operator's live state directory.
+
+## PLD planning-application activity (London)
+
+The `pld.applications_search` datasource aggregates decided planning
+applications per London planning authority per month, sourced from the public
+Crown-copyright planning.data.gov.uk planning-application dataset.
+
+- **Source URL:** `https://files.planning.data.gov.uk/dataset/planning-application.csv`
+- **License:** Open Government Licence v3.0 / © Crown copyright 2026
+- **Maintainer:** Ministry of Housing, Communities and Local Government
+- **Cadence:** Files are updated continuously; published as a national snapshot. The operator schedule is nightly (02:30 UTC).
+- **Coverage:** England-wide. The parser restricts output to London's 33
+  planning authorities (32 London boroughs + City of London Corporation).
+  Entity IDs are sourced from the planning.data.gov.uk `local-authority`
+  dataset and embedded in `nan_fung.ingestion.pld_supply.LONDON_AUTHORITY_ENTITY_IDS`.
+- **Metric:** `planning_application_count` per `(organisation_entity, period_year, period_month)`.
+- **Known caveats:**
+  - Source supplies only `reference`, `decision-date`, `description`, and `organisation-entity`. The fields `ground-area`, `planning-application-type`, `development-classification`, and `planning-application-status` are unpopulated in source data.
+  - The dataset is applicant-supplied via Planning Authorities. It is not quality-checked at receipt; treat as confidence=medium.
+  - Includes all use classes (commercial, residential, mixed). It is NOT office-specific.
+
+Operator ingest is the same shape as Bank Rate:
+
+```sh
+cre --config /secure/cre.toml ingest enqueue pld.applications_search
+cre --config /secure/cre.toml daemon once --allow-network
+cre --config /secure/cre.toml observations latest --kind metrics --limit 50
+```
+
+The capability `london-planning-activity` surfaces this metric to the agent
+through the existing typed Facade and `query_market_data` tool. The original
+`london-project-supply` capability remains blocked because no public source
+supplies proposed or approved floorspace; see
+`.omo/evidence/london-supply-unlock/task-1-pld-probe.md` for the gap analysis.

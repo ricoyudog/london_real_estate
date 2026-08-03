@@ -731,7 +731,7 @@ def default_registry() -> DatasourceRegistry:
         _source("nomis.api", "Nomis API", "Office for National Statistics", "api", ("www.nomisweb.co.uk",), "open_official", status="production", licence="Open Government Licence"),
         _source("govuk.voa_collection", "GOV.UK VOA NDR release collection", "GOV.UK", "landing_page", ("www.gov.uk",), "open_official", status="production", licence="Open Government Licence"),
         _source("voa.ndr_stock", "VOA NDR stock release", "Valuation Office Agency", "dataset", ("assets.publishing.service.gov.uk",), "open_official", status="production", licence="Open Government Licence"),
-        _source("pld.api", "Planning London Datahub", "Greater London Authority", "api", ("planningdata.london.gov.uk",), "unapproved", status="discovery", access_class="restricted"),
+        _source("pld.api", "Planning applications (Crown copyright)", "Ministry of Housing, Communities and Local Government", "api", ("files.planning.data.gov.uk",), "open_official", status="production", access_class="open"),
         _source("bnp.report", "BNP Paribas market report", "BNP Paribas Real Estate", "attachment", ("www.realestate.bnpparibas.co.uk",), "restricted_report", status="discovery", access_class="restricted"),
         _source("rightmove.manual", "Rightmove commercial tracker", "Rightmove", "manual_submission", (), "reference_only", status="discovery", access_class="reference_only"),
         _source("ons.opn", "ONS Opinions and Lifestyle Survey", "Office for National Statistics", "attachment", ("www.ons.gov.uk",), "open_official", status="production", licence="Open Government Licence"),
@@ -747,8 +747,8 @@ def default_registry() -> DatasourceRegistry:
     definitions = (
         _definition("bnp.central_london_office_report", "Central London office report", "BNP Paribas Real Estate", "office_market_report", "report", "assisted", "bnp.report", ("www.realestate.bnpparibas.co.uk",), "restricted_report", status="discovery", schedule=_schedule("weekly_discovery", {"kind": "weekly", "weekday": 0, "hour": 10, "minute": 0}), data_kind="report-derived", confidence="medium", access_class="restricted", promotion_policy="manual_review"),
         _definition("voa.ndr_office_stock", "VOA office stock", "Valuation Office Agency", "office_stock", "file_release", "automatic", "voa.ndr_stock", ("www.gov.uk", "assets.publishing.service.gov.uk"), "open_official", status="production", schedule=_schedule("quarterly_check", {"kind": "monthly", "months": [1, 4, 7, 10], "day": 15, "hour": 10, "minute": 0}), default_request={"area_code": "E12000007"}, source_ids=("govuk.voa_collection", "voa.ndr_stock"), capabilities=_FILE_RELEASE_CAPABILITIES),
-        _definition("pld.applications_search", "PLD supply candidates", "Greater London Authority", "supply_pipeline", "structured_api", "automatic", "pld.api", ("planningdata.london.gov.uk",), "unapproved", status="discovery", schedule=_schedule("nightly_discovery", {"kind": "daily", "hour": 2, "minute": 30}), promotion_policy="never_canonical", access_class="restricted"),
-        _definition("pld.application", "PLD application detail", "Greater London Authority", "supply_pipeline", "structured_api", "fanout", "pld.api", ("planningdata.london.gov.uk",), "unapproved", status="discovery", schedule=_schedule("active_daily", {"kind": "daily", "hour": 3, "minute": 30}), promotion_policy="never_canonical", access_class="restricted"),
+_definition("pld.applications_search", "PLD planning-application activity (London)", "Ministry of Housing, Communities and Local Government", "planning_activity", "file_release", "automatic", "pld.api", ("files.planning.data.gov.uk",), "open_official", status="production", schedule=_schedule("nightly_discovery", {"kind": "daily", "hour": 2, "minute": 30}), promotion_policy="automatic", access_class="open"),
+_definition("pld.application", "PLD planning-application detail", "Ministry of Housing, Communities and Local Government", "planning_activity", "file_release", "fanout", "pld.api", ("files.planning.data.gov.uk",), "open_official", status="production", schedule=_schedule("active_daily", {"kind": "daily", "hour": 3, "minute": 30}), promotion_policy="automatic", access_class="open"),
         _definition("boe.bank_rate.iudbedr", "Bank Rate (IUDBEDR)", "Bank of England", "interest-rates-monetary-policy", "structured_api", "automatic", "boe.iadb", ("www.bankofengland.co.uk",), "open_official", status="production", schedule=_schedule("weekday_bank_rate", {"kind": "weekly", "weekdays": [0, 1, 2, 3, 4], "hour": 19, "minute": 0}), collector_name="bank_rate.collect", parser_name="bank_rate.csv", record_key_name="bank_rate.record_key", default_request={"series": "IUDBEDR"}, validators=(validator,), capabilities={"runtime_migration": "bound", "offline_reparse": True}),
         _definition("boe.mpc_news", "MPC release metadata", "Bank of England", "feed", "feed", "automatic", "boe.rss", ("www.bankofengland.co.uk",), "restricted_report", status="discovery", schedule=_schedule("two_hour_poll", {"kind": "interval", "seconds": 7200}), access_class="restricted", promotion_policy="never_canonical"),
         _definition("boe.mpc_content", "MPC linked content", "Bank of England", "interest-rates-monetary-policy", "report", "fanout", "boe.mpc_content", ("www.bankofengland.co.uk",), "per_artifact", status="discovery", access_class="restricted", promotion_policy="never_canonical"),
@@ -915,4 +915,37 @@ def default_runtime_bindings() -> RuntimeBindings:
         "v1",
         validate_onspd_postcode_record,
     )
+
+    from .pld_supply import (
+        collect_planning_applications,
+        parse_planning_applications_csv,
+        pld_applications_search_record_key,
+        validate_planning_application_record,
+    )
+
+    bindings.register(
+        "collector",
+        "pld_applications_search.collector",
+        "v1",
+        collect_planning_applications,
+    )
+    bindings.register(
+        "parser",
+        "pld_applications_search.parser",
+        "v1",
+        parse_planning_applications_csv,
+    )
+    bindings.register(
+        "record_key",
+        "pld_applications_search.record_key",
+        "v1",
+        pld_applications_search_record_key,
+    )
+    bindings.register(
+        "validator",
+        "pld_applications_search.validate",
+        "v1",
+        validate_planning_application_record,
+    )
+
     return bindings
