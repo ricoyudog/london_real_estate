@@ -529,15 +529,17 @@ def _parse_saved(
 def _records(value: Any) -> tuple[Mapping[str, Any], ...]:
     if not isinstance(value, list) or not all(isinstance(record, Mapping) for record in value):
         raise FileReleaseLifecycleError("file-release parser returned invalid records")
-    return tuple(_canonical_record(record) for record in value)
+    return tuple(value)
 
 
 def _canonical_record(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """Translate spreadsheet floats into JSON-safe source-value text."""
 
     def convert(value: Any) -> Any:
-        if isinstance(value, float):
-            return format(value, ".15g")
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return format(value, ".15g") if isinstance(value, float) else str(value)
         if isinstance(value, Mapping):
             return {str(key): convert(item) for key, item in value.items()}
         if isinstance(value, list):
@@ -562,7 +564,7 @@ def _persist_record(
     return store.persist_observation(
         run,
         record_key=metadata["record_key"],
-        payload=record,
+        payload=_canonical_record(record),
         record_type=metadata["record_type"],
         category=metadata["category"],
         evidence=(evidence,),

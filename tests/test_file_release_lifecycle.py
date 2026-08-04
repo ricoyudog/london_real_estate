@@ -16,6 +16,7 @@ from nan_fung.datasources import common
 from nan_fung.datasources.common import AcquisitionResponse, StoredAcquisitionResponse
 from nan_fung.ingestion.file_release_lifecycle import (
     FileReleaseLifecycleError,
+    _canonical_record,
     acquire_live_file_release,
     ingest_file_release_artifacts,
     reparse_file_release_evidence,
@@ -525,3 +526,25 @@ def test_file_release_refuses_a_definition_with_changed_executable_bindings(
         )
 
     assert not (tmp_path / "evidence").exists()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (int(103400), "103400"),
+        (int(0), "0"),
+        (float(3.5), "3.5"),
+        (float(0.0), "0"),
+        (True, True),
+        (False, False),
+        ({"a": 5}, {"a": "5"}),
+        ([1, 2.5], ["1", "2.5"]),
+        ((1, 2.5), ["1", "2.5"]),
+        (str("hello"), "hello"),
+        (None, None),
+    ),
+)
+def test_canonical_record_characterizes_numeric_scalar_conversion(
+    value: object, expected: object
+) -> None:
+    assert _canonical_record({"value": value}) == {"value": expected}
