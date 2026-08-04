@@ -66,20 +66,21 @@ export async function runFixture(options: {
   readonly prompt: string;
   readonly responses: (launcher: RecordingLauncher, clock: FixtureClock) => readonly FauxResponseStep[];
   readonly refreshScript?: RefreshScript;
-  readonly seed?: "bank-rate" | "planning";
+  readonly seed?: string;
   readonly capabilityIds?: readonly string[];
   readonly refreshProfiles?: readonly string[];
   readonly empty?: boolean;
   readonly stale?: boolean;
 }): Promise<Fixture> {
-  const dataDir = seedStore(options.fixture, options.seed ?? "bank-rate", options.empty ?? false, options.stale ?? false);
+  const seed = options.seed ?? (options.capabilityIds?.includes("london-planning-activity") === true ? "planning" : "bank-rate");
+  const dataDir = seedStore(options.fixture, seed, options.empty ?? false, options.stale ?? false);
   process.env.PI_MODEL = FAUX_MODEL_REF;
   process.env.CRE_DATA_DIR = dataDir;
   process.env.PI_OFFLINE = "1";
   const launcher = new RecordingLauncher(dataDir, options.refreshScript);
   const clock = new FixtureClock();
   const faux = createFauxModels(options.responses(launcher, clock));
-  const populateLedger = options.seed === "planning" || options.capabilityIds?.includes("london-planning-activity") === true;
+  const populateLedger = seed === "planning";
   const ctx = {
     ...context,
     ...(options.capabilityIds === undefined ? {} : { allowed_capability_ids: options.capabilityIds }),
@@ -95,7 +96,7 @@ export async function runFixture(options: {
     modelsOverride: faux.models,
     launcher,
     createSession,
-    finalizeBrief: async (draft, turn) => finalizeFixture(draft, turn, launcher, populateLedger),
+    finalizeBrief: async (draft, turn) => finalizeFixture(draft, turn, launcher, seed),
   });
   const outcome = await runTurn(booted, options.prompt, { now: clock.now, populateLedger });
   writeFixtureEvidence(options.fixture, outcome, launcher.calls);
@@ -158,7 +159,7 @@ export function artifact(outcome: TurnOutcome): MarketBriefV1 {
   return outcome.artifact as MarketBriefV1;
 }
 
-function seedStore(fixture: string, seed: "bank-rate" | "planning", empty: boolean, stale: boolean): string {
+function seedStore(fixture: string, seed: string, empty: boolean, stale: boolean): string {
   const dataDir = join(mkdtempSync(join(tmpdir(), `pi-fixture-${fixture}-`)), "data");
   if (empty) {
     execFileSync("uv", ["run", "cre", "--data-dir", dataDir, "db", "migrate"], { cwd: worktreeRoot });
@@ -170,13 +171,54 @@ function seedStore(fixture: string, seed: "bank-rate" | "planning", empty: boole
   return dataDir;
 }
 
-function finalizeFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher, populateLedger: boolean): MarketBriefV1 | Readonly<Record<string, unknown>> {
-  if (!populateLedger) return finalizeBankRateFixture(draft, turn, launcher);
+function finalizeFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher, seed: string): MarketBriefV1 | Readonly<Record<string, unknown>> {
+  if (seed === "bank-rate") return finalizeBankRateFixture(draft, turn, launcher);
+  if (seed !== "planning") return finalizeGenericFixture(draft, turn, launcher);
   const anchor = turn.getLedger().at(-1)?.anchor_as_of;
   if (anchor === undefined) return finalizeBrief({ schema_version: "market_brief_draft.v1", ...recordDraft(draft) }, turn);
   const finalizerTurn = new TurnContext(turn.session, turn.limits);
   for (const entry of turn.getLedger()) if (entry.anchor_as_of === anchor) finalizerTurn.addLedgerEntry(entry);
   return finalizeBrief({ schema_version: "market_brief_draft.v1", ...recordDraft(draft) }, finalizerTurn);
+}
+
+function finalizeGenericFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher): MarketBriefV1 | Readonly<Record<string, unknown>> {
+  if (!isRecord(draft) || !Array.isArray(draft["facts"]) || draft["facts"].length === 0) return unavailableArtifact(draft);
+  const record = queryRecord(launcher);
+  const numeric = record["numeric"];
+  const citation = citationRecord(launcher);
+  const anchor = queryData(launcher)["anchor_as_of"];
+  const capabilityId = queryArguments(launcher)["capability_id"];
+  const observationId = record["observation_id"];
+  const citationRefs = record["citation_refs"];
+  assert.ok(isRecord(numeric));
+  assert.ok(typeof anchor === "string");
+  assert.ok(typeof capabilityId === "string");
+  assert.ok(typeof observationId === "string");
+  assert.ok(Array.isArray(citationRefs) && citationRefs.every((ref) => typeof ref === "string"));
+  const periodLabel = numeric["period_label"] ?? numeric["source_date"];
+  assert.ok(typeof periodLabel === "string");
+  turn.addLedgerEntry({
+    kind: "query",
+    anchor_as_of: anchor,
+    capability_id: capabilityId,
+    observation_ids: [observationId],
+    citation_refs: citationRefs,
+    numeric_projection: {
+      ...numeric,
+      period_label: periodLabel,
+      published_at: citation["published_at"],
+      datasource_confidence: citation["confidence"],
+      source: citation["publisher"],
+      public_url: citation["public_url"] ?? null,
+      anchor_as_of: anchor,
+    },
+    freshness: {
+      retrieval_freshness: record["retrieval_freshness"],
+      observation_freshness: record["observation_freshness"],
+      degraded: record["degraded"],
+    },
+  });
+  return finalizeBrief({ schema_version: "market_brief_draft.v1", ...draft }, turn);
 }
 
 function finalizeBankRateFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher): MarketBriefV1 | Readonly<Record<string, unknown>> {
@@ -240,6 +282,12 @@ function queryData(launcher: RecordingLauncher): Readonly<Record<string, unknown
   const data = launcher.calls.filter((call) => call.toolName === "query_market_data").at(-1)?.result.data;
   assert.ok(data);
   return data;
+}
+
+function queryArguments(launcher: RecordingLauncher): Readonly<Record<string, unknown>> {
+  const request = launcher.calls.filter((call) => call.toolName === "query_market_data").at(-1)?.request;
+  assert.ok(isRecord(request) && isRecord(request["arguments"]));
+  return request["arguments"];
 }
 
 function queryRecord(launcher: RecordingLauncher): Readonly<Record<string, unknown>> {
