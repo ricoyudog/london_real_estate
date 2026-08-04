@@ -12,7 +12,8 @@
     "postinstall": "node scripts/resolve-pi-brace-expansion.mjs",
     "test": "node --experimental-strip-types --test test/*.test.ts test/fixtures/*.test.ts",
     "test:browser": "playwright test",
-    "test:glm": "RUN_REAL_MODEL_SMOKE=1 node --env-file=.env --experimental-strip-types --test test/real-model-e2e.test.ts",
+    "test:glm": "RUN_REAL_MODEL_SMOKE=1 node --env-file=.env --experimental-strip-types --test-concurrency=1 --test test/real-model-e2e.test.ts test/real-pld-ui-e2e.test.ts",
+    "test:glm:only": "RUN_REAL_MODEL_SMOKE=1 node --env-file=.env --experimental-strip-types --test-concurrency=1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
