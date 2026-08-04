@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-03
+updated: 2026-08-04
 ---
 
 # Wiki Log
@@ -19,3 +19,4 @@ YYYY-MM-DD | action change-name | +added-file -removed-file
 2026-08-02 | implement pi-agent-runtime-phase-2 | +agent-runtime/ +skills/generate-grounded-market-brief/SKILL.md
 2026-08-02 | implement pi-agent-runtime-phase-2 | +wiki/sessions/2026-08-02-pi-agent-runtime-phase-2.md
 2026-08-03 | unlock london-planning-activity | +wiki/decisions/london-planning-activity-unlock-2026-08-03.md +wiki/research/datasource/planning-data-gov-uk-survey.md
+2026-08-04 | unlock london-planning-activity agent capability | ~hot.md ~index.md ~log.md (a5c399e: City geography filter, host facade binding, trusted finalizer, streaming guard redesign, real GLM/browser E2E)

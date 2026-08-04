@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-03
+updated: 2026-08-04
 status: accepted
 source: "[[wiki/architecture/datasource|Datasource Persistence Architecture: Observation + Evidence Store]]"
 tags: [decision, ingestion, capability, pld, london-planning-activity]
@@ -132,7 +132,20 @@ product never claims floorspace coverage it cannot deliver.
 ## References
 
 - Source survey: [[wiki/research/datasource/planning-data-gov-uk-survey|planning.data.gov.uk Crown copyright survey]]
-- Implementation commit: `e91620e feat(ingestion): unlock london-planning-activity on Crown-copyright planning.data.gov.uk`
+- Ingestion commit: `e91620e feat(ingestion): unlock london-planning-activity on Crown-copyright planning.data.gov.uk`
+- Agent capability commit: `a5c399e feat: unlock london-planning-activity capability and relax streaming numeric guard`
 - Live probe evidence: `.omo/evidence/london-supply-unlock/task-1-pld-probe.md` (host-local)
 - Operations runbook: [[docs/datasource-operations|Datasource Operations Runbook — PLD section]]
 - Acceptance row: TC-04 in [[docs/datasource-acceptance|Datasource Acceptance Matrix]]
+
+## Agent capability delivery (2026-08-04, commit `a5c399e`)
+
+The agent-facing capability was delivered on top of the ingestion foundation:
+
+- **Catalog authority**: `pld.applications_search` promoted from `blocked` to `operational` (`current_vintage_backfill_blocked`); `pld.application` stays blocked.
+- **Canonical geography filter**: PLD canonical payload now emits `geography_code` (= organisation entity); the `london-planning-activity` capability manifest permits `geography_code` + source-date range filters. City of London authority `203` + July 2026 window returns count `2`.
+- **Host-authoritative facade binding**: `query_market_data` results carry `capability_id`, `datasource_ids`, `normalized_filters`, `result_count` as required contract fields, derived from the manifest — not from model arguments. These are stripped from the model-visible tool output.
+- **Trusted finalizer**: the host injects a fixed planning-proxy limitation on planning-backed artifacts; rejects un-negated claims about office supply, floorspace, completions, rent, vacancy, or named-submarket evidence; zero-result planning queries become `unavailable` with a canonical-availability limitation; a zero-result planning query cannot contaminate a later Bank Rate fact in the same turn.
+- **Production grant**: `agent-runtime/src/server.ts` authorizes `london-planning-activity` + `planning-activity-monthly` alongside Bank Rate.
+- **Streaming NumericGuard redesign**: the guard now filters numeric tokens from streamed prose instead of killing the turn. The draft-level `guardModelText` remains the authoritative numeric boundary. This lets GLM-5.2 narrate naturally while the host retains exclusive ownership of artifact numbers.
+- **Deterministic + real tests**: Pi fixture (`08-planning-activity.test.ts`), no-canonical fixture (`09-planning-no-canonical.test.ts`), browser City July + project-supply-unavailable specs, gated real GLM smoke, gated real-browser Playwright E2E.
