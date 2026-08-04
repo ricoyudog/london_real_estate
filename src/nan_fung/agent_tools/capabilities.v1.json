@@ -169,6 +169,156 @@
       "limitations": [],
       "blocked_reason": "Transaction coverage is not approved.",
       "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.gdp.current",
+      "status": "supported",
+      "datasource_ids": ["ons.gdp.ecyx", "ons.gdp.ihyq"],
+      "metric_ids": [],
+      "geography": {"scope": "United Kingdom"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {"datasource_id": ["ons.gdp.ecyx", "ons.gdp.ihyq"]},
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "value",
+      "numeric_value_type": "decimal_string",
+      "limitations": ["UK macro GDP indicator, not London office metric."],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.inflation.current",
+      "status": "supported",
+      "datasource_ids": ["ons.inflation.d7g7", "ons.inflation.l55o", "ons.inflation.czbh"],
+      "metric_ids": [],
+      "geography": {"scope": "United Kingdom"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {"datasource_id": ["ons.inflation.d7g7", "ons.inflation.l55o", "ons.inflation.czbh"]},
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "value",
+      "numeric_value_type": "decimal_string",
+      "limitations": ["UK macro inflation indicator (CPIH/OOH/GDP deflator), not London office metric."],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.labour.current",
+      "status": "supported",
+      "datasource_ids": ["ons.labour.lf24", "ons.labour.mgsx", "ons.labour.ap2y", "ons.labour.kai9"],
+      "metric_ids": [],
+      "geography": {"scope": "United Kingdom"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {"datasource_id": ["ons.labour.lf24", "ons.labour.mgsx", "ons.labour.ap2y", "ons.labour.kai9"]},
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "value",
+      "numeric_value_type": "decimal_string",
+      "limitations": ["UK macro labour indicator (unemployment/employment/vacancies), not London office metric."],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.employment.london",
+      "status": "supported",
+      "datasource_ids": ["nomis.nm_59_1.london_lfs", "nomis.nm_130_1.london_workforce_jobs"],
+      "metric_ids": [],
+      "geography": {"scope": "London"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {"datasource_id": ["nomis.nm_59_1.london_lfs", "nomis.nm_130_1.london_workforce_jobs"]},
+          "allowed_filters": ["source_date_from", "source_date_to", "geography_code"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "value",
+      "numeric_value_type": "decimal_string",
+      "limitations": ["London employment indicator (LFS + workforce jobs), not London office metric."],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "uk.hybrid-working",
+      "status": "supported",
+      "datasource_ids": ["ons.opn.hybrid_working"],
+      "metric_ids": [],
+      "geography": {"scope": "Great Britain"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {"datasource_id": ["ons.opn.hybrid_working"]},
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "estimate_percent",
+      "numeric_value_type": "decimal_string",
+      "limitations": ["Great Britain survey proxy, not London office occupancy or building access."],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "london.office-stock",
+      "status": "supported",
+      "datasource_ids": ["voa.ndr_office_stock"],
+      "metric_ids": [],
+      "geography": {"scope": "London region (E12000007)"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "supply": {
+          "fixed_filters": {"datasource_id": ["voa.ndr_office_stock"]},
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "office_property_count",
+      "numeric_value_type": "decimal_string",
+      "limitations": [
+        "Annual stock count of office hereditaments; not vacancy or available floor area.",
+        "Rateable value is a statutory assessment, not market rent — see wiki/research/datasource/office-rent-canonical-survey.md."
+      ],
+      "blocked_reason": null,
+      "owner": "market-data"
+    },
+    {
+      "schema_version": "agent_tool_capability.v1",
+      "capability_id": "london.epc-certificates",
+      "status": "supported",
+      "datasource_ids": ["mhclg.epc.live_table_a_london"],
+      "metric_ids": [],
+      "geography": {"scope": "London"},
+      "refresh_profiles": [],
+      "query_templates": {
+        "metrics": {
+          "fixed_filters": {"datasource_id": ["mhclg.epc.live_table_a_london"]},
+          "allowed_filters": ["source_date_from", "source_date_to"]
+        }
+      },
+      "query_disabled": false,
+      "numeric_value_field": "number_lodgements",
+      "numeric_value_type": "decimal_string",
+      "limitations": ["All non-domestic properties, not offices only."],
+      "blocked_reason": null,
+      "owner": "market-data"
     }
   ]
 }

@@ -23,7 +23,7 @@ const app = await createApp({
     principal: "dashboard-user",
     capability_scope_id: "dashboard-bootstrap",
     allowed_access_classes: ["open"],
-    allowed_capability_ids: ["uk.bank-rate-current", "london-planning-activity"],
+    allowed_capability_ids: ["uk.bank-rate-current", "london-planning-activity", "uk.gdp.current", "uk.inflation.current", "uk.labour.current", "uk.employment.london", "uk.hybrid-working", "london.office-stock", "london.epc-certificates"],
     allowed_refresh_profiles: mode === "demo" ? [] : ["bank-rate-latest", "planning-activity-monthly"],
   },
   creDataDir,
