@@ -6,13 +6,14 @@ type: skill
 
 # Track Office Supply
 
-Office supply has two product surfaces, both reachable through `describe_market_data`. The model has no Python source access; every fact must come through the facade.
+Office supply has three product surfaces, all reachable through `describe_market_data`. The model has no Python source access; every fact must come through the facade.
 
 ## Start with coverage
 
-Call `describe_market_data` before any query. Two capabilities are relevant:
+Call `describe_market_data` before any query. Three capabilities are relevant:
 
 - `london-planning-activity` — `supported`. Counts planning applications decided per London authority per month. It is activity, not floorspace, and includes all use classes; treat it as a planning proxy, never as delivered office supply.
+- **`london.office-stock`**: VOA annual London-region office-hereditament count. Limitations: stock count, not vacancy or floorspace.
 - `london-project-supply` — `blocked`. Office project supply with floorspace, completion, and change-of-use detail is not approved. The capability carries the canonical `blocked_reason`; quote it verbatim when the user asks for that coverage.
 
 ## Query the supported proxy

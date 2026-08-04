@@ -8,13 +8,20 @@ type: skill
 
 ## Start with coverage
 
-Call `describe_market_data` before any query. It is the authority for product coverage, query kinds, limitations, blocked reasons, canonical availability, and allowed refresh profiles. At launch, only `uk.bank-rate-current` is supported. Do not claim that London office rent, vacancy, or transaction data is available. That coverage is blocked.
+Call `describe_market_data` before any query. It is the authority for product coverage, query kinds, limitations, blocked reasons, canonical availability, and allowed refresh profiles. Do not claim that London office rent, vacancy, or transaction data is available. That coverage is blocked.
+
+## Supported capabilities
+
+- **`uk.gdp.current`**: ONS GDP ECYX and IHYQ measures. Limitations: UK macro data, not London office data.
+- **`uk.inflation.current`**: CPIH, owner-occupiers' housing costs, and GDP deflator measures. Limitations: UK macro data.
+- **`uk.labour.current`**: Unemployment, employment, and vacancy measures. Limitations: UK macro data, not London office data.
+- **`uk.employment.london`**: Nomis London LFS and workforce-jobs measures. Limitations: London geography, not office demand or occupancy.
 
 An unqualified request uses the latest canonical data: query without `as_of`, then state the returned canonical anchor. Do not impose a date clarification before the available capability is queried.
 
 ## Query canonical data
 
-For the supported Bank Rate capability, call `query_market_data` with:
+For Bank Rate, call `query_market_data` with:
 
 ```json
 {
