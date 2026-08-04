@@ -77,13 +77,16 @@ The fixtures cover ambiguous dates, explicit historical values, fresh latest val
 
 ## Production vs Test Policy
 
-The production allowlist includes `uk.bank-rate-current` with the
-`bank-rate-latest` refresh profile and `london-planning-activity` with the
-`planning-activity-monthly` refresh profile. Planning activity is a
-borough/month, all-use-class proxy, not office-only supply or floorspace. The
-ONSPD postcode capability, `uk.postcode-resolution` with `onspd-one-postcode`,
-exists only behind the hidden `test-online-v1` policy used by the Phase 2c
-approval gate. It is never in production.
+The production allowlist exposes nine capabilities: `uk.bank-rate-current`,
+`london-planning-activity`, `uk.gdp.current`, `uk.inflation.current`,
+`uk.labour.current`, `uk.employment.london`, `uk.hybrid-working`,
+`london.office-stock`, and `london.epc-certificates`. Bank Rate and planning
+activity retain their `bank-rate-latest` and `planning-activity-monthly`
+refresh profiles. The seven new capabilities are query-only. Planning activity
+is a borough/month, all-use-class proxy, not office-only supply or floorspace.
+The ONSPD postcode capability, `uk.postcode-resolution` with
+`onspd-one-postcode`, exists only behind the hidden `test-online-v1` policy
+used by the Phase 2c approval gate. It is never in production.
 
 ## What this runtime does NOT do
 
@@ -96,10 +99,15 @@ approval gate. It is never in production.
 
 ## Product coverage limit
 
-The dashboard and runtime expose Bank Rate and borough/month planning activity.
-London office rent, vacancy, news, transaction, and project-supply questions
-are finalized as explicit unavailable coverage until their canonical source
-gates are approved; the UI does not invent KPI cards for them.
+The dashboard and runtime expose nine capabilities: UK Bank Rate,
+borough/month planning activity, UK GDP, UK inflation, UK labour, London
+employment, Great Britain hybrid-working survey results, London office stock,
+and London EPC lodgements. GDP, inflation, and labour are UK macro indicators;
+hybrid working is not office occupancy; office stock is not vacancy or
+floorspace; EPC lodgements cover all non-domestic properties. London office
+rent, vacancy, news, transaction, and project-supply questions are finalized as
+explicit unavailable coverage until their canonical source gates are approved;
+the UI does not invent KPI cards for them.
 
 ## Scope Claim
 

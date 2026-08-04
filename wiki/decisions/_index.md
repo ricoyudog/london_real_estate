@@ -9,6 +9,7 @@ updated: 2026-08-03
 
 ## Implemented and Verified
 
+- [[wiki/decisions/canonical-capabilities-unlock-2026-08-04|Canonical Capabilities Unlock — 2026-08-04]] — accepted; seven ONS, Nomis, VOA, and MHCLG-backed query-only capabilities promoted to `supported`
 - [[wiki/decisions/london-planning-activity-unlock-2026-08-03|London Planning Activity Unlock — 2026-08-03]] — accepted；`pld.applications_search` promoted to production on Crown-copyright OGL v3 data；live daemon run ingested 189 Camden observations
 - [[wiki/decisions/datasource-operational-implementation-2026-08-01|Datasource Operational Implementation Status — 2026-08-01]] — accepted；含 live persistence、ONSPD retention 與驗收結果
 - [[wiki/decisions/agent-tool-facade-foundation|Agent Tool Facade Foundation]] — accepted；Phase 1 已完成並通過 offline exit gate

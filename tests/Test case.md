@@ -51,6 +51,7 @@ The Phase 2 deterministic runner derives the following rules from this catalog:
 | Gate | Result |
 |---|---|
 | Python offline suite | `387 passed, 15 deselected`；包含 time-safe submarket promotion 與 demo initializer/Compose contracts。 |
+| Seven canonical capabilities | `109 passed`，包括 50 個 capability/query tests；real-GLM-UI tests pending user-provided `agent-runtime/.env`. |
 | Node unit/integration | `184` tests；`182 passed, 2 skipped, 0 failed`，nested fixtures 已納入 `npm test`；`npm run typecheck` 通過。 |
 | Production dependency audit | clean `npm ci` 後 Pi minimatch 實際 resolve `brace-expansion@5.0.9`，nested vulnerable copy 不存在；`npm audit --omit=dev` 為 `0 vulnerabilities`。 |
 | Browser regression | `11 passed`；涵蓋 session/reload cleanup、direct host-validated transcript answer、unsupported artifact fail-closed、seeded/empty/stale overview、suggested prompts、中文/英文/多行/4000 字、double submit、16-turn limit、failure-after-success、cancel/retry、SSE replay、responsive、keyboard、reduced motion 與 axe。 |

@@ -25,12 +25,13 @@ updated: 2026-08-04
 ## Decisions
 
 - [[wiki/decisions/_index|Decisions Index]]
+- [[wiki/decisions/canonical-capabilities-unlock-2026-08-04|Canonical Capabilities Unlock — 2026-08-04]]
 
 ## Research and Product Direction
 
 - [[wiki/research/_index|Research Index]]
 - [[wiki/research/agent-skill-and-tool/_index|Agent Skill and Tool Research]]
-- [[chatbot-dashboard-decision|Chatbot + Dashboard Decision]]
+- [[wiki/research/chatbot-dashboard-decision|Chatbot + Dashboard Decision]]
 
 ## Project Reference
 

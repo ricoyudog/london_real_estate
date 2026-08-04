@@ -41,6 +41,7 @@ pinned: true
 - WSL2 9P mount (`/mnt/e`) causes severe disk I/O stalls that can exceed test timeouts. Real-GLM and Playwright suites are more reliable on native Linux or macOS.
 
 ## Recently Shipped
+- 2026-08-04: 7 canonical capabilities promoted to `supported`: GDP, inflation, labour, London employment, hybrid working, office stock, and EPC. Each has a seeder, Python tests, manifest entry, runtime grant, skill prompt update, and finalizer claim guard. Real-UI-GLM tests pending user `.env`.
 - `a5c399e` feat: unlock london-planning-activity capability and relax streaming numeric guard — the full agent-facing capability: City authority 203 geography filter, host-derived facade binding metadata, trusted finalizer with planning proxy enforcement, production grant, deterministic Pi/browser fixtures, gated real GLM + real-browser E2E, and the streaming guard redesign.
 - `e91620e` feat(ingestion): unlock london-planning-activity on Crown-copyright planning.data.gov.uk
 - `804c073` fix(agent-runtime): configure GLM tool compatibility
