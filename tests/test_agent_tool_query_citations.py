@@ -488,13 +488,15 @@ def _query_seeded_capability(
     numeric_value_field: str,
     numeric_value: str,
     unit: str,
+    query_kind: str = "metrics",
+    record_type: str = "metric",
 ) -> dict[str, object]:
     record = ReadRecord(
         observation_id=f"obs_{capability_id}",
         datasource_id=datasource_id,
-        query_kind="metrics",
+        query_kind=query_kind,
         category=category,
-        record_type="metric",
+        record_type=record_type,
         access_class=AccessClass.OPEN,
         available_at=NOW,
         payload={numeric_value_field: numeric_value},
@@ -522,7 +524,7 @@ def _query_seeded_capability(
     context = request["host_context"]
     assert isinstance(arguments, dict)
     assert isinstance(context, dict)
-    arguments.update({"capability_id": capability_id, "filters": {}})
+    arguments.update({"capability_id": capability_id, "filters": {}, "query_kind": query_kind})
     context["allowed_capability_ids"] = [capability_id]
 
     result = facade.execute("query_market_data", request)
@@ -601,6 +603,8 @@ def test_office_stock_query_projects_property_count() -> None:
         numeric_value_field="office_property_count",
         numeric_value="103400",
         unit="properties",
+        query_kind="supply",
+        record_type="supply",
     )
 
     records = data["records"]
