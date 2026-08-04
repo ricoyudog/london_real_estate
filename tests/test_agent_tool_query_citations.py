@@ -9,12 +9,15 @@ from pathlib import Path
 from typing import Iterable
 
 from nan_fung.agent_tools import AgentToolFacade
+from nan_fung.ingestion.official_macro import parse_ons_series_json
+from nan_fung.operational import OperationalStore
 from nan_fung.read_api import (
     AccessClass,
     CitationProjection,
     InMemoryReadRepository,
     ReadRecord,
     ReadService,
+    SQLiteReadRepository,
 )
 
 
@@ -240,6 +243,97 @@ def test_query_projects_the_fixed_bank_rate_numeric_field_and_scoped_pagination(
     assert _error_code(denied) == "POLICY_DENIED"
 
 
+def test_query_projects_ons_gdp_value_as_a_decimal_string(tmp_path: Path) -> None:
+    store = OperationalStore(tmp_path)
+    store.sync_registry(now=NOW)
+    evidence_bytes = b'''{
+      "description": {
+        "title": "Quarterly gross domestic product",
+        "unit": "%",
+        "releaseDate": "2026-07-21T23:00:00.000Z",
+        "quarterLabelStyle": "quarterly"
+      },
+      "quarters": [
+        {"label": "2026 Q1", "value": "0.70", "updateDate": "2026-07-21T23:00:00.000Z"}
+      ]
+    }'''
+    record = parse_ons_series_json(
+        evidence_bytes,
+        series="IHYQ",
+        uri="/economy/grossdomesticproductgdp/timeseries/ihyq/qna",
+        frequency="quarters",
+        source_url="https://api.beta.ons.gov.uk/v1/data?uri=ihyq",
+    )[0]
+    queued = store.enqueue(
+        "ons.gdp.ihyq",
+        scheduled_for=NOW,
+        request={"fixture": "gdp-query"},
+    )
+    claim = store.claim_job(queued.job_id, "worker", now=NOW)
+    assert claim is not None
+    run = store.start_run(claim, "worker", now=NOW)
+    evidence = store.persist_evidence(
+        run,
+        evidence_bytes,
+        media_type="application/json",
+        request={"method": "GET", "url": record["source_url"]},
+        response={"status": 200, "final_url": record["source_url"]},
+        retrieved_at=NOW,
+        now=NOW,
+    )
+    store.persist_observation(
+        run,
+        record_key=(record["series"], record["period"]),
+        payload=record,
+        record_type="metric",
+        category="macro",
+        evidence=(evidence,),
+        locator=record["locator"],
+        source_date=record["release_date"][:10],
+        unit=record["unit"],
+        definition_text=record["title"],
+        now=NOW,
+    )
+    store.finish_run(run, status="succeeded", promote=True, now=NOW)
+    repository = SQLiteReadRepository(store.database_path)
+    facade = AgentToolFacade(
+        read_service=ReadService(
+            repository,
+            cursor_secret=b"gdp-read-cursor-secret",
+            clock=lambda: NOW,
+        ),
+        citation_projection=repository,
+        handle_secret=b"g" * 32,
+        clock=lambda: NOW,
+    )
+    request = _fixture("query_bank_rate")
+    arguments = request["arguments"]
+    context = request["host_context"]
+    assert isinstance(arguments, dict)
+    assert isinstance(context, dict)
+    arguments.update(
+        {
+            "capability_id": "uk.gdp.current",
+            "filters": {"source_date_from": "2026-07-01", "source_date_to": "2026-07-31"},
+        }
+    )
+    context["allowed_capability_ids"] = ["uk.gdp.current"]
+    context["allowed_refresh_profiles"] = []
+
+    result = facade.execute("query_market_data", request)
+
+    assert result["status"] == "ok"
+    data = result["data"]
+    assert isinstance(data, dict)
+    records = data["records"]
+    assert isinstance(records, list)
+    assert len(records) == 1
+    numeric = records[0]["numeric"]
+    assert isinstance(numeric, dict)
+    assert numeric["value"] == "0.7"
+    assert isinstance(numeric["value"], str)
+
+
 def test_planning_query_targets_city_july_with_canonical_citation_lineage() -> None:
     records = tuple(
         ReadRecord(
@@ -384,6 +478,149 @@ def test_planning_query_returns_no_numeric_records_without_canonical_pld() -> No
     }
     assert data["result_count"] == 0
     assert data["records"] == []
+
+
+def _query_seeded_capability(
+    *,
+    capability_id: str,
+    datasource_id: str,
+    category: str,
+    numeric_value_field: str,
+    numeric_value: str,
+    unit: str,
+) -> dict[str, object]:
+    record = ReadRecord(
+        observation_id=f"obs_{capability_id}",
+        datasource_id=datasource_id,
+        query_kind="metrics",
+        category=category,
+        record_type="metric",
+        access_class=AccessClass.OPEN,
+        available_at=NOW,
+        payload={numeric_value_field: numeric_value},
+        evidence_ids=(f"ev_{capability_id}",),
+        source_date=date(2026, 7, 31),
+        retrieved_at=NOW,
+        unit=unit,
+        definition=f"Fixture {capability_id}",
+        period_label="July 2026",
+        retrieval_freshness="fresh",
+        observation_freshness="fresh",
+    )
+    facade = AgentToolFacade(
+        read_service=ReadService(
+            InMemoryReadRepository((record,)),
+            cursor_secret=b"capability-read-cursor-secret",
+            clock=lambda: NOW,
+        ),
+        citation_projection=CitationResolver(),
+        handle_secret=b"c" * 32,
+        clock=lambda: NOW,
+    )
+    request = _fixture("query_bank_rate")
+    arguments = request["arguments"]
+    context = request["host_context"]
+    assert isinstance(arguments, dict)
+    assert isinstance(context, dict)
+    arguments.update({"capability_id": capability_id, "filters": {}})
+    context["allowed_capability_ids"] = [capability_id]
+
+    result = facade.execute("query_market_data", request)
+
+    assert result["status"] == "ok"
+    data = result["data"]
+    assert isinstance(data, dict)
+    return data
+
+
+def test_inflation_query_projects_ons_value() -> None:
+    data = _query_seeded_capability(
+        capability_id="uk.inflation.current",
+        datasource_id="ons.inflation.d7g7",
+        category="macro",
+        numeric_value_field="value",
+        numeric_value="3.4",
+        unit="percent",
+    )
+
+    records = data["records"]
+    assert isinstance(records, list)
+    assert records[0]["numeric"]["value"] == "3.4"
+
+
+def test_labour_query_projects_ons_value() -> None:
+    data = _query_seeded_capability(
+        capability_id="uk.labour.current",
+        datasource_id="ons.labour.ap2y",
+        category="macro",
+        numeric_value_field="value",
+        numeric_value="812.0",
+        unit="thousand vacancies",
+    )
+
+    records = data["records"]
+    assert isinstance(records, list)
+    assert records[0]["numeric"]["value"] == "812.0"
+
+
+def test_employment_query_projects_nomis_value() -> None:
+    data = _query_seeded_capability(
+        capability_id="uk.employment.london",
+        datasource_id="nomis.nm_59_1.london_lfs",
+        category="employment-market",
+        numeric_value_field="value",
+        numeric_value="73.8",
+        unit="percent",
+    )
+
+    records = data["records"]
+    assert isinstance(records, list)
+    assert records[0]["numeric"]["value"] == "73.8"
+
+
+def test_hybrid_working_query_projects_estimate_percent() -> None:
+    data = _query_seeded_capability(
+        capability_id="uk.hybrid-working",
+        datasource_id="ons.opn.hybrid_working",
+        category="hybrid_working",
+        numeric_value_field="estimate_percent",
+        numeric_value="25",
+        unit="percent",
+    )
+
+    records = data["records"]
+    assert isinstance(records, list)
+    assert records[0]["numeric"]["value"] == "25"
+
+
+def test_office_stock_query_projects_property_count() -> None:
+    data = _query_seeded_capability(
+        capability_id="london.office-stock",
+        datasource_id="voa.ndr_office_stock",
+        category="office_stock",
+        numeric_value_field="office_property_count",
+        numeric_value="103400",
+        unit="properties",
+    )
+
+    records = data["records"]
+    assert isinstance(records, list)
+    assert records[0]["numeric"]["value"] == "103400"
+
+
+def test_epc_query_projects_lodgements() -> None:
+    data = _query_seeded_capability(
+        capability_id="london.epc-certificates",
+        datasource_id="mhclg.epc.live_table_a_london",
+        category="esg_energy_efficiency",
+        numeric_value_field="number_lodgements",
+        numeric_value="3630",
+        unit="certificates",
+    )
+
+    records = data["records"]
+    assert isinstance(records, list)
+    assert records[0]["numeric"]["value"] == "3630"
 
 
 def _pld_record(

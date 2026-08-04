@@ -78,6 +78,82 @@ def test_planning_activity_permits_the_canonical_city_geography_filter() -> None
     )
 
 
+def test_manifest_inflation_supported() -> None:
+    manifest = load_capability_manifest()
+
+    capability = manifest["uk.inflation.current"]
+    assert capability.status == "supported"
+    assert capability.numeric_value_field == "value"
+    assert capability.datasource_ids == (
+        "ons.inflation.d7g7",
+        "ons.inflation.l55o",
+        "ons.inflation.czbh",
+    )
+
+
+def test_manifest_labour_supported() -> None:
+    manifest = load_capability_manifest()
+
+    capability = manifest["uk.labour.current"]
+    assert capability.status == "supported"
+    assert capability.numeric_value_field == "value"
+    assert capability.datasource_ids == (
+        "ons.labour.lf24",
+        "ons.labour.mgsx",
+        "ons.labour.ap2y",
+        "ons.labour.kai9",
+    )
+
+
+def test_manifest_employment_supported() -> None:
+    manifest = load_capability_manifest()
+
+    capability = manifest["uk.employment.london"]
+    assert capability.status == "supported"
+    assert capability.numeric_value_field == "value"
+    assert capability.datasource_ids == (
+        "nomis.nm_59_1.london_lfs",
+        "nomis.nm_130_1.london_workforce_jobs",
+    )
+
+
+def test_manifest_hybrid_working_supported() -> None:
+    manifest = load_capability_manifest()
+
+    capability = manifest["uk.hybrid-working"]
+    assert capability.status == "supported"
+    assert capability.numeric_value_field == "estimate_percent"
+    assert capability.datasource_ids == ("ons.opn.hybrid_working",)
+
+
+def test_manifest_office_stock_supported() -> None:
+    manifest = load_capability_manifest()
+
+    capability = manifest["london.office-stock"]
+    assert capability.status == "supported"
+    assert capability.numeric_value_field == "office_property_count"
+    assert capability.datasource_ids == ("voa.ndr_office_stock",)
+
+
+def test_manifest_epc_supported() -> None:
+    manifest = load_capability_manifest()
+
+    capability = manifest["london.epc-certificates"]
+    assert capability.status == "supported"
+    assert capability.numeric_value_field == "number_lodgements"
+    assert capability.datasource_ids == ("mhclg.epc.live_table_a_london",)
+
+
+def test_gdp_capability_exposes_ons_decimal_value_series() -> None:
+    manifest = load_capability_manifest()
+
+    gdp = manifest["uk.gdp.current"]
+
+    assert gdp.status == "supported"
+    assert gdp.numeric_value_field == "value"
+    assert gdp.datasource_ids == ("ons.gdp.ecyx", "ons.gdp.ihyq")
+
+
 def test_describe_intersects_host_allowlist_but_preserves_partial_and_blocked_coverage() -> None:
     request = _fixture("requests.json", "describe_market_data")
     host_context = request["host_context"]
