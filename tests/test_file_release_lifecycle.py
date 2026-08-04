@@ -201,11 +201,15 @@ def _artifacts(datasource_id: str) -> tuple[AcquisitionResponse, AcquisitionResp
 
 
 @pytest.mark.parametrize(
-    "datasource_id",
-    (VOA_DATASOURCE_ID, HYBRID_DATASOURCE_ID, EPC_DATASOURCE_ID),
+    ("datasource_id", "expected_source_date"),
+    (
+        (VOA_DATASOURCE_ID, "2026-03-31"),
+        (HYBRID_DATASOURCE_ID, "2026-06-03"),
+        (EPC_DATASOURCE_ID, "2026-06-30"),
+    ),
 )
 def test_file_release_fixture_lifecycle_persists_two_artifacts_and_promotes(
-    tmp_path: Path, datasource_id: str
+    tmp_path: Path, datasource_id: str, expected_source_date: str
 ) -> None:
     store = OperationalStore(tmp_path)
     discovery, release = _artifacts(datasource_id)
@@ -232,7 +236,7 @@ def test_file_release_fixture_lifecycle_persists_two_artifacts_and_promotes(
             (result.observation_ids[0],),
         ).fetchone()
         canonical = connection.execute(
-            "SELECT observation_id FROM canonical_latest_v1 WHERE observation_id = ?",
+            "SELECT observation_id, source_date FROM canonical_latest_v1 WHERE observation_id = ?",
             (result.observation_ids[0],),
         ).fetchone()
     finally:
@@ -243,6 +247,7 @@ def test_file_release_fixture_lifecycle_persists_two_artifacts_and_promotes(
     if datasource_id == EPC_DATASOURCE_ID:
         assert record_locator["row"] == 5
     assert canonical is not None
+    assert canonical["source_date"] == expected_source_date
 
 
 def test_file_release_reparse_inherits_nonproduction_lane(tmp_path: Path) -> None:

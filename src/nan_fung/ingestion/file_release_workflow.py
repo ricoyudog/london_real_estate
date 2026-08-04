@@ -49,6 +49,37 @@ EPC_DATASOURCE_ID = "mhclg.epc.live_table_a_london"
 FILE_RELEASE_AUTOMATIC_DATASOURCE_IDS = frozenset(
     {VOA_DATASOURCE_ID, HYBRID_DATASOURCE_ID, EPC_DATASOURCE_ID}
 )
+_MONTHS = MappingProxyType(
+    {
+        "jan": 1,
+        "january": 1,
+        "feb": 2,
+        "february": 2,
+        "mar": 3,
+        "march": 3,
+        "apr": 4,
+        "april": 4,
+        "may": 5,
+        "jun": 6,
+        "june": 6,
+        "jul": 7,
+        "july": 7,
+        "aug": 8,
+        "august": 8,
+        "sep": 9,
+        "sept": 9,
+        "september": 9,
+        "oct": 10,
+        "october": 10,
+        "nov": 11,
+        "november": 11,
+        "dec": 12,
+        "december": 12,
+    }
+)
+_QUARTER_ENDS = MappingProxyType(
+    {"1": "03-31", "2": "06-30", "3": "09-30", "4": "12-31"}
+)
 
 
 class FileReleaseWorkflowError(ValueError):
@@ -58,12 +89,23 @@ class FileReleaseWorkflowError(ValueError):
 class AcquisitionMetadataLike(Protocol):
     """The metadata available for both in-memory and streamed artifacts."""
 
-    request_url: str
-    final_url: str
-    status: int
-    headers: Mapping[str, str]
-    retrieved_at: str
-    method: str
+    @property
+    def request_url(self) -> str: ...
+
+    @property
+    def final_url(self) -> str: ...
+
+    @property
+    def status(self) -> int: ...
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
+
+    @property
+    def retrieved_at(self) -> str: ...
+
+    @property
+    def method(self) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +357,7 @@ def record_metadata_for(
             "record_key": (area_code, str(year)),
             "record_type": "supply",
             "category": "office_stock",
+            "source_date": f"{year}-03-31",
             "period_label": str(year),
             "unit": "properties",
             "definition": "VOA non-domestic rating office stock for the London region",
@@ -329,6 +372,7 @@ def record_metadata_for(
             "record_key": (metric, geography, period),
             "record_type": "metric",
             "category": "hybrid_working",
+            "source_date": _hybrid_source_date(period),
             "period_label": period,
             "unit": "percent",
             "definition": metric,
@@ -354,6 +398,7 @@ def record_metadata_for(
             "record_key": (region, quarter),
             "record_type": "metric",
             "category": "esg_energy_efficiency",
+            "source_date": _epc_source_date(quarter),
             "period_label": quarter,
             "unit": "certificates",
             "definition": "MHCLG Table A non-domestic EPC ratings by region",
@@ -481,3 +526,47 @@ def _required_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise FileReleaseWorkflowError(f"{label} is required")
     return value
+
+
+def _hybrid_source_date(period: str) -> str:
+    cleaned = period.replace("–", "-").replace("—", "-").strip()
+    words = cleaned.split()
+    if len(words) >= 4 and words[0].isdigit() and words[1].casefold() == "to":
+        year = _year(words[-1], "ONS hybrid period year")
+        month = _month(words[-2], "ONS hybrid period month")
+        day = int(words[0])
+        if not 1 <= day <= 31:
+            raise FileReleaseWorkflowError("ONS hybrid period day is invalid")
+        return f"{year:04d}-{month:02d}-{day:02d}"
+    if len(words) == 2 and "-" in words[0]:
+        year = _year(words[1], "ONS hybrid period year")
+        month = _month(words[0].split("-", maxsplit=1)[0], "ONS hybrid period month")
+        return f"{year:04d}-{month:02d}-01"
+    raise FileReleaseWorkflowError("ONS hybrid period is not recognized")
+
+
+def _epc_source_date(quarter: str) -> str:
+    try:
+        year_text, quarter_text = quarter.strip().split("/", maxsplit=1)
+    except ValueError as error:
+        raise FileReleaseWorkflowError("EPC quarter is not recognized") from error
+    year = _year(year_text, "EPC quarter year")
+    suffix = quarter_text.strip().casefold().removeprefix("q")
+    try:
+        end = _QUARTER_ENDS[suffix]
+    except KeyError as error:
+        raise FileReleaseWorkflowError("EPC quarter is not recognized") from error
+    return f"{year:04d}-{end}"
+
+
+def _month(value: str, label: str) -> int:
+    try:
+        return _MONTHS[value.strip().casefold().rstrip(".")]
+    except KeyError as error:
+        raise FileReleaseWorkflowError(f"{label} is not recognized") from error
+
+
+def _year(value: str, label: str) -> int:
+    if not value.isdigit() or len(value) != 4:
+        raise FileReleaseWorkflowError(f"{label} is invalid")
+    return int(value)

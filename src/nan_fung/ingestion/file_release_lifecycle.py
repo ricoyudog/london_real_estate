@@ -566,6 +566,7 @@ def _persist_record(
         record_type=metadata["record_type"],
         category=metadata["category"],
         evidence=(evidence,),
+        source_date=metadata["source_date"],
         period_label=metadata["period_label"],
         unit=metadata["unit"],
         definition_text=metadata["definition"],

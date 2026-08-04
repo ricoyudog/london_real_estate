@@ -11,6 +11,7 @@ from nan_fung.ingestion.official_macro_workflow import (
     normalize_nomis_response,
     normalize_ons_response,
     ons_request_for,
+    record_metadata_for,
     request_for,
 )
 
@@ -98,6 +99,9 @@ def test_ons_contract_builds_immutable_request_and_normalizes_its_one_series() -
     assert normalized.datasource_id == "ons.gdp.ecyx"
     assert normalized.record_keys == (("ECYX", "2026 JUN"),)
     assert normalized.records[0]["value"] == "2.6"
+    assert record_metadata_for("ons.gdp.ecyx", normalized.records[0])["source_date"] == (
+        "2026-07-21T23:00:00.000Z"
+    )
     assert normalized.artifact_metadata["record_count"] == 1
     assert normalized.acquisition.retrieved_at == "2026-08-01T00:00:00.000000Z"
     assert dict(normalized.acquisition.headers) == {"Content-Type": "application/json"}
@@ -133,6 +137,9 @@ def test_nomis_contracts_normalize_only_their_fixed_london_dataset(
 
     assert normalized.record_keys == (expected_key,)
     assert normalized.records[0]["geography_code"] == "E12000007"
+    assert record_metadata_for(datasource_id, normalized.records[0])["source_date"] == (
+        "2026-08-01T00:00:00.000000Z"
+    )
     assert normalized.artifact_metadata["dataset"] == expected_key[0]
 
 

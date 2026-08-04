@@ -398,10 +398,13 @@ def normalize_nomis_response(
     contract = _nomis_contract(datasource_id)
     acquisition = adapt_acquisition_response(nomis_request_for(datasource_id), response)
     try:
-        records = parse_nomis_dataset_json(
-            acquisition.body,
-            dataset=contract.dataset,
-            source_url=acquisition.source_url,
+        records = tuple(
+            record | {"updated_at": acquisition.retrieved_at}
+            for record in parse_nomis_dataset_json(
+                acquisition.body,
+                dataset=contract.dataset,
+                source_url=acquisition.source_url,
+            )
         )
         for record in records:
             if record.get("geography_code") != "E12000007":

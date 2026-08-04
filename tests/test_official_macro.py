@@ -79,7 +79,9 @@ def test_parse_ons_months_normalizes_persisted_json_with_locator_and_key() -> No
         "uri": "/economy/grossdomesticproductgdp/timeseries/ecyx/mgdp",
     }
     assert official_macro.ons_record_key(records[-1]) == ("ECYX", "2026 JUN")
-    assert official_macro.ons_record_metadata(records[-1])["period_label"] == "2026 JUN"
+    metadata = official_macro.ons_record_metadata(records[-1])
+    assert metadata["period_label"] == "2026 JUN"
+    assert metadata["source_date"] == "2026-07-21T23:00:00.000Z"
     assert official_macro.ons_artifact_metadata(records) == {
         "published_at": "2026-07-21T23:00:00.000Z",
         "source_updated_at": "2026-07-21T23:00:00.000Z",
@@ -154,10 +156,11 @@ def test_parse_nomis_dataset_json_normalizes_both_configured_datasets(
 
     assert official_macro.nomis_record_key(records[0]) == expected_key
     assert records[0]["unit"] == expected_unit
+    records[0]["updated_at"] = "2026-08-01T00:00:00.000Z"
     assert records[0]["locator"]["pointer"] == "/obs/0"
-    assert official_macro.nomis_record_metadata(records[0])["datasource_id"].startswith(
-        "nomis."
-    )
+    metadata = official_macro.nomis_record_metadata(records[0])
+    assert metadata["datasource_id"].startswith("nomis.")
+    assert metadata["source_date"] == "2026-08-01T00:00:00.000Z"
     assert official_macro.nomis_artifact_metadata(records) == {
         "dataset": dataset,
         "record_count": 1,

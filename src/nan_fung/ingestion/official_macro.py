@@ -136,7 +136,7 @@ def ons_record_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "record_type": "metric",
         "category": "macro",
-        "source_date": None,
+        "source_date": _ons_source_date(record),
         "period_label": _required_text(record.get("period"), "ONS record period"),
         "unit": _text_or_empty(record.get("unit"), "ONS record unit"),
         "data_kind": "direct",
@@ -241,7 +241,7 @@ def nomis_record_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "record_type": "metric",
         "category": "employment-market",
-        "source_date": None,
+        "source_date": _nomis_source_date(record),
         "period_label": _required_text(record.get("period"), "Nomis record period"),
         "unit": _required_text(record.get("unit"), "Nomis record unit"),
         "data_kind": "direct",
@@ -388,6 +388,16 @@ def _text_or_empty(value: object, field: str) -> str:
     if not isinstance(value, str):
         raise OfficialMacroParseError(f"{field} must be text")
     return value.strip()
+
+
+def _ons_source_date(record: Mapping[str, Any]) -> str:
+    return _optional_text(record.get("release_date"), "ONS release date") or _optional_text(
+        record.get("updated_at"), "ONS update date"
+    ) or ""
+
+
+def _nomis_source_date(record: Mapping[str, Any]) -> str:
+    return _optional_text(record.get("updated_at"), "Nomis update date") or ""
 
 
 def _source_number_text(value: object, field: str) -> str:
