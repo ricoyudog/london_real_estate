@@ -99,21 +99,21 @@
       "status": "supported",
       "datasource_ids": ["pld.applications_search"],
       "metric_ids": ["planning_application_count"],
-      "geography": {"scope": "London borough (33 authorities)"},
+      "geography": {"scope": "London planning authorities (32 London boroughs plus City of London Corporation; 33 authorities)"},
       "refresh_profiles": ["planning-activity-monthly"],
       "query_templates": {
         "metrics": {
           "fixed_filters": {
             "datasource_id": ["pld.applications_search"]
           },
-          "allowed_filters": ["source_date_from", "source_date_to"]
+          "allowed_filters": ["geography_code", "source_date_from", "source_date_to"]
         }
       },
       "query_disabled": false,
       "numeric_value_field": "planning_application_count",
       "numeric_value_type": "decimal_string",
       "limitations": [
-        "Borough-level granularity only; named submarkets (Mayfair, City) require polygon overlay which is out of scope.",
+        "Planning-authority aggregation only: 32 London boroughs plus City of London Corporation; named broker submarkets (Mayfair, City core) require polygon overlay which is out of scope.",
         "Counts planning applications decided per London authority per month. Does not reflect proposed or approved floorspace — that field is unpopulated in source data.",
         "Includes all use classes, not office-specific; treat as planning activity, not pure office supply.",
         "Source is applicant-supplied via Crown-copyright planning.data.gov.uk; confidence=medium.",

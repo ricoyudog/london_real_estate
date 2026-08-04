@@ -48,6 +48,18 @@ test("renders only the final artifact with freshness, confidence, lineage and sa
   await expect(page.locator("#transcript")).not.toContainText("4%", { useInnerText: true });
 });
 
+test("submits the City July planning question and renders the host-finalized proxy brief", async ({ page }) => {
+  await gotoReady(page);
+  await ask(page, "How many planning applications were decided in City of London in July 2026? Cite the source.");
+
+  await expect(page.locator("#brief-status")).toHaveText("Complete");
+  await expect(page.locator("#artifact-content")).toContainText("2");
+  await expect(page.locator("#artifact-content")).toContainText("Lineage");
+  await expect(page.locator("#artifact-content")).toContainText("all use classes");
+  await expect(page.locator("#source-list a")).toHaveAttribute("href", /^https:\/\/files\.planning\.data\.gov\.uk\//);
+  await expect(page.locator("body")).not.toContainText("h1.");
+});
+
 test("writes a direct host-validated answer and source to the transcript", async ({ page }) => {
   await gotoReady(page);
   await ask(page, "What is the latest UK Bank Rate? Please include sources.");
@@ -108,6 +120,13 @@ test("keeps unsupported office coverage unavailable without model-generated numb
   await ask(page, "What is the latest West End vacancy rate?");
   await expect(page.locator("#brief-status")).toHaveText("Unavailable");
   await expect(page.locator("#artifact-content")).toContainText("requested office-market coverage is not available");
+  await expect(page.locator("#artifact-content .fact-value")).toHaveCount(0);
+});
+
+test("keeps project-supply coverage unavailable and fact-free", async ({ page }) => {
+  await gotoReady(page);
+  await ask(page, "What is the City of London project supply pipeline?");
+  await expect(page.locator("#brief-status")).toHaveText("Unavailable");
   await expect(page.locator("#artifact-content .fact-value")).toHaveCount(0);
 });
 
@@ -176,13 +195,13 @@ test("has no serious accessibility violations and remains usable at desktop, tab
 async function gotoReady(page: Page): Promise<void> {
   await page.goto("/");
   await expect(page.locator("#connection-label")).toHaveText("Secure session active");
-  await expect(page.locator("#overview-status")).toContainText("Canonical snapshot loaded");
+  await expect(page.locator("#overview-status")).toContainText("Canonical snapshot loaded", { timeout: 30_000 });
 }
 
 async function ask(page: Page, message: string, expectTerminal = true): Promise<void> {
   await page.locator("#chat-input").fill(message);
   await page.locator("#send-button").click();
-  if (expectTerminal) await expect(page.locator("#chat-input")).toBeEnabled();
+  if (expectTerminal) await expect(page.locator("#chat-input")).toBeEnabled({ timeout: 60_000 });
 }
 
 function overviewFixture(state: "unavailable" | "stale") {

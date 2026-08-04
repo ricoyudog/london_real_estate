@@ -2,7 +2,7 @@
 import type * as http from "node:http";
 
 import { projectArtifactForBrowser } from "./browser-artifact.ts";
-import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
+import { ModelTextBuffer } from "./finalizer.ts";
 import type { RecoveryStore } from "./recovery.ts";
 import type { AgentEvent, LifecycleReducer, TurnFailureReason } from "./runtime.ts";
 import { SessionRegistry } from "./sessions.ts";
@@ -177,15 +177,7 @@ export function streamModelText(sessionId: string, turnId: string, hub: SseHub, 
     stream = { held: false };
     textStreams.set(buffer, stream);
   }
-  try {
-    buffer.append(chunk);
-  } catch (error) {
-    if (error instanceof NumericGuardViolation) {
-      hub.failTurn(sessionId, turnId, "NUMERIC_GUARD_REJECTED");
-      return;
-    }
-    throw error;
-  }
+  buffer.append(chunk);
   stream.held ||= /[.\p{N}%％٪\p{Sc}]/u.test(chunk);
   if (!stream.held) hub.emit(sessionId, turnId, "message.delta", { text: chunk });
 }

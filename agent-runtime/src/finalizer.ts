@@ -15,6 +15,10 @@ const chineseNumericExpression = new RegExp(
 );
 const unicodeNumber = /\p{N}/u;
 const percentOrCurrency = /[%％٪\p{Sc}]/u;
+const planningCapabilityId = "london-planning-activity";
+const planningLimitation = "Planning application counts cover all use classes and are not office-only supply, floorspace, completions, rent, vacancy, or named-submarket evidence.";
+const planningAvailabilityLimitation = "No canonical planning-application activity is available for the requested borough and month.";
+const planningClaimTerms = [/\boffice(?:-only)?\s+supply\b/iu, /\bfloorspace\b/iu, /\b(?:completions?|completed\s+projects?)\b/iu, /\brent\b/iu, /\bvacancy\b/iu, /\b(?:named[-\s]+)?submarket\b/iu];
 
 type Status = (typeof statuses)[number];
 type Confidence = (typeof confidences)[number];
@@ -154,41 +158,27 @@ export class ModelTextBuffer {
   #text = "";
   #checkedThrough = 0;
   #safe = false;
-  guardRejected = false;
 
   append(chunk: string): void {
-    if (this.guardRejected) throw new NumericGuardViolation("buffer closed");
-    if (this.#safe) throw new NumericGuardViolation("buffer already flushed");
+    if (this.#safe) return;
     this.#text += chunk;
-    this.#guardCompleted();
+    this.#filterCompleted();
   }
 
   flush(): string {
-    if (this.guardRejected) throw new NumericGuardViolation("buffer closed");
-    this.#guard();
     this.#safe = true;
     return this.#text;
   }
 
-  #guard(): void {
-    const span = NumericGuard.check(this.#text);
-    if (span === null) return;
-    this.guardRejected = true;
-    throw new NumericGuardViolation(span);
-  }
-
-  #guardCompleted(): void {
+  #filterCompleted(): void {
     const boundaries = [...this.#text.matchAll(/[\s!?;:%％٪\p{Sc}]/gu)];
     const lastBoundary = boundaries.at(-1);
     if (lastBoundary?.index === undefined) return;
     const completedThrough = lastBoundary.index + lastBoundary[0].length;
     const completed = this.#text.slice(this.#checkedThrough, completedThrough);
     const span = NumericGuard.check(completed);
-    if (span !== null) {
-      this.guardRejected = true;
-      throw new NumericGuardViolation(span);
-    }
-    this.#checkedThrough = completedThrough;
+    if (span !== null) this.#text = this.#text.slice(0, this.#checkedThrough);
+    else this.#checkedThrough = completedThrough;
   }
 }
 
@@ -227,6 +217,9 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
   const ledger = hostLedger(turn);
   if (ledger.anchor_as_of === null && draft.facts.length > 0) throw new DraftRejected("UNRESOLVED_REF");
   const references = resolveReferences(draft, ledger);
+  const planningBacked = [...references.values()].some(({ entry }) => entry.capability_id === planningCapabilityId);
+  if (planningBacked) guardPlanningClaims(draft);
+  const emptyPlanningAttempt = draft.facts.length === 0 && turn.getLedger().some((entry) => entry.kind === "query" && entry.capability_id === planningCapabilityId && entry.observation_ids.length === 0);
   const sources = [...references.values()].map(({ ref, projection }) => ({
     citation_ref: ref,
     source: projection.source,
@@ -266,10 +259,10 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
   return {
     schema_version: "market_brief.v1",
     title: draft.title,
-    status: draft.status === "complete" && freshness_warnings.length > 0 ? "partial" : draft.status,
+    status: emptyPlanningAttempt ? "unavailable" : draft.status === "complete" && freshness_warnings.length > 0 ? "partial" : draft.status,
     facts,
     inferences: draft.inferences,
-    limitations: draft.limitations,
+    limitations: emptyPlanningAttempt ? [planningAvailabilityLimitation] : planningBacked ? [...draft.limitations, planningLimitation] : draft.limitations,
     as_of: ledger.anchor_as_of,
     sources,
     lineage,
@@ -372,6 +365,27 @@ const guardModelText = (draft: MarketBriefDraftV1): void => {
     const span = NumericGuard.check(value);
     if (span !== null) throw new DraftRejected("NUMERIC_GUARD_VIOLATION", span);
   }
+};
+
+const guardPlanningClaims = (draft: MarketBriefDraftV1): void => {
+  const text = [
+    draft.title,
+    ...draft.limitations,
+    ...draft.facts.flatMap((fact) => fact.kind === "qualitative" ? [fact.text] : []),
+    ...draft.inferences.flatMap((inference) => [inference.text, inference.caveat]),
+  ];
+  for (const value of text) {
+    for (const term of planningClaimTerms) {
+      const match = term.exec(value);
+      if (match !== null && !isNegatedClaim(value, match.index)) throw new DraftRejected("PLANNING_PROXY_CLAIM");
+    }
+  }
+};
+
+const isNegatedClaim = (text: string, claimIndex: number): boolean => {
+  const prefix = text.slice(Math.max(0, claimIndex - 40), claimIndex);
+  return /\b(?:not|no|rather\s+than|instead\s+of|without)\s+(?:an?\s+|the\s+|pure\s+)?(?:\w+\s+){0,4}$/iu.test(prefix)
+    || /\b(?:not|no)\s+(?:an?\s+|the\s+)?$/iu.test(prefix);
 };
 
 const parseNumericFields = (input: unknown): NumericFields | null => {

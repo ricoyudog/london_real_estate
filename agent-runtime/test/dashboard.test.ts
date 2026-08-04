@@ -30,7 +30,9 @@ test("dashboard overview derives its Bank Rate and coverage from scoped Facade r
   assert.equal(overview.bank_rate.value, "5.25");
   assert.equal(overview.bank_rate.source?.publisher, "Bank of England");
   assert.deepEqual(overview.deployment, { mode: "demo", fixture_label: "Deterministic Bank Rate fixture" });
-  assert.equal(overview.coverage.find((item) => item.capability_id === "london-prime-rent")?.status, "blocked");
+  assert.equal(overview.coverage.find((item) => item.capability_id === "london-planning-activity")?.status, "supported");
+  assert.equal(overview.coverage.find((item) => item.capability_id === "london-project-supply")?.status, "blocked");
+  assert.equal(overview.coverage.find((item) => item.capability_id === "london-office-vacancy")?.status, "blocked");
   assert.equal(JSON.stringify(overview).includes("h1.secret-citation-handle"), false);
 });
 
@@ -42,8 +44,10 @@ class DashboardLauncher {
     switch (toolName) {
       case "describe_market_data": return ok({ capabilities: [
         capability("uk.bank-rate-current", "supported", null, "fresh"),
+        capability("london-planning-activity", "supported", null, "fresh"),
         capability("london-prime-rent", "blocked", "Product coverage is not approved.", "unknown"),
         capability("london-office-vacancy", "blocked", "Product coverage is not approved.", "unknown"),
+        capability("london-project-supply", "blocked", "Project supply coverage is not approved.", "unknown"),
         capability("uk-investment-transactions", "blocked", "Transaction coverage is not approved.", "unknown"),
         capability("uk-ranked-market-news", "blocked", "Ranked news coverage is not approved.", "unknown"),
       ] });

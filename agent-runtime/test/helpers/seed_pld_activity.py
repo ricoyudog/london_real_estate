@@ -13,7 +13,7 @@ from pathlib import Path
 from nan_fung.operational import OperationalStore
 
 
-RETRIEVED_AT = datetime(2026, 8, 1, 12, tzinfo=UTC)
+RETRIEVED_AT = datetime.now(UTC)
 PLD_URL = "https://files.planning.data.gov.uk/dataset/planning-application.csv"
 
 # Tiny fixture CSV: one month of Camden + City of London decided applications.
@@ -67,6 +67,7 @@ def seed_pld_activity(data_dir: Path) -> None:
             record_key=(entity, "2026-07"),
             payload={
                 "organisation_entity": entity,
+                "geography_code": entity,
                 "borough": borough,
                 "period_year": "2026",
                 "period_month": "07",
@@ -76,7 +77,7 @@ def seed_pld_activity(data_dir: Path) -> None:
             record_type="metric",
             category="planning_activity",
             evidence=(evidence,),
-            source_date="2026-07-01",
+            source_date="2026-07-31",
             unit="count",
             definition_text=(
                 "Monthly count of decided planning applications per London "

@@ -43,7 +43,7 @@ _CAPABILITIES = (
     DatasourceWorkflowCapability("voa.ndr_office_stock", "operational", "fetch_voa_office_stock", "release_history_backfill_blocked"),
     DatasourceWorkflowCapability("ons.opn.hybrid_working", "operational", "fetch_hybrid_working", "release_history_backfill_blocked"),
     DatasourceWorkflowCapability("mhclg.epc.live_table_a_london", "operational", "fetch_non_domestic_epc_ratings", "all_non_domestic_proxy_scope_preserved"),
-    DatasourceWorkflowCapability("pld.applications_search", "blocked", "search_planning_applications", "licence_and_retention_unapproved"),
+    DatasourceWorkflowCapability("pld.applications_search", "operational", "search_planning_applications", "current_vintage_backfill_blocked"),
     DatasourceWorkflowCapability("pld.application", "blocked", "fetch_planning_application", "licence_and_retention_unapproved"),
     DatasourceWorkflowCapability("govuk.search.market_news", "blocked", "search_market_news", "review_and_access_unapproved"),
     DatasourceWorkflowCapability("govuk.content.market_news", "blocked", "fetch_content_item", "review_and_access_unapproved"),

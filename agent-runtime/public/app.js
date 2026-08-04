@@ -1,8 +1,10 @@
 const API_ROOT = "/v1/sessions";
 
 const COVERAGE_CARDS = [
+  { capabilityId: "london-planning-activity", label: "London planning activity" },
   { capabilityId: "london-prime-rent", label: "London prime rent" },
   { capabilityId: "london-office-vacancy", label: "London office vacancy" },
+  { capabilityId: "london-project-supply", label: "London project supply" },
   { capabilityId: "uk-investment-transactions", label: "Investment transactions" },
   { capabilityId: "uk-ranked-market-news", label: "Market news" },
 ];

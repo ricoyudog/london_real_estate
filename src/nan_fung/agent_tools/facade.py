@@ -437,6 +437,10 @@ class AgentToolFacade:
             )
         return {
             "anchor_as_of": utc_timestamp(response.anchor_as_of),
+            "capability_id": capability.capability_id,
+            "datasource_ids": list(capability.datasource_ids),
+            "normalized_filters": dict(binding["filters"]),
+            "result_count": len(records),
             "query_kind": response.query_kind,
             "records": records,
             "total_count": response.total_count,

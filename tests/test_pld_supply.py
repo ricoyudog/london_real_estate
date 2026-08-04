@@ -169,6 +169,7 @@ def test_record_payload_includes_metric_id() -> None:
     payload = record.payload
     assert payload["metric_id"] == "planning_application_count"
     assert payload["planning_application_count"] == "7"
+    assert payload["geography_code"] == "41"
     assert payload["period_year"] == "2025"
     assert payload["period_month"] == "03"
 

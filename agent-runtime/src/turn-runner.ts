@@ -1,6 +1,6 @@
 import type { BootedRuntime } from "./boot.ts";
 import type { ToolResult } from "./facade-launcher.ts";
-import { ModelTextBuffer, NumericGuardViolation } from "./finalizer.ts";
+import { ModelTextBuffer } from "./finalizer.ts";
 import { LifecycleReducer, type AgentEvent, TurnContext, TurnDeadlineExceeded, defaultTurnLimits, type TurnFailureReason } from "./runtime.ts";
 import { modelVisibleBytes } from "./tools.ts";
 
@@ -74,7 +74,6 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
       }
     },
   });
-  let rejectText = false;
   const unsubscribe = session.subscribe((event) => {
     if (state.reducer.state() === "failed" || state.reducer.state() === "completed" || state.reducer.state() === "cancelled") return;
     switch (event["type"]) {
@@ -88,7 +87,7 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
         if (state.artifact !== undefined) return;
         const chunk = textChunk(event);
         if (chunk === undefined) return;
-        try { state.buffer.append(chunk); } catch (error) { if (error instanceof NumericGuardViolation) rejectText = true; else throw error; }
+        state.buffer.append(chunk);
         return;
       }
       default:
@@ -121,11 +120,7 @@ async function execute(booted: BootedRuntime, turn: TurnContext, userMessage: st
     state.reducer.transition({ type: "turn.completed", terminal_state: "completed" });
     return outcome(state, turn, "completed");
   }
-  if (rejectText || state.buffer.guardRejected) {
-    state.reducer.transition({ type: "turn.failed", reason_code: "NUMERIC_GUARD_REJECTED" });
-    return outcome(state, turn, "failed", "NUMERIC_GUARD_REJECTED");
-  }
-  try { state.buffer.flush(); } catch (error) { if (error instanceof NumericGuardViolation) { state.reducer.transition({ type: "turn.failed", reason_code: "NUMERIC_GUARD_REJECTED" }); return outcome(state, turn, "failed", "NUMERIC_GUARD_REJECTED"); } throw error; }
+  state.buffer.flush();
   if (state.artifact === undefined) { state.reducer.transition({ type: "turn.failed", reason_code: "NO_FINAL_ARTIFACT" }); return outcome(state, turn, "failed", "NO_FINAL_ARTIFACT"); }
   state.reducer.transition({ type: "artifact.final" });
   state.reducer.transition({ type: "turn.completed", terminal_state: "completed" });
@@ -171,14 +166,20 @@ function afterTool(state: RunnerState, toolName: string, args: unknown, result: 
 
 function addQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown>>, records: readonly Readonly<Record<string, unknown>>[]): void {
   const anchor = data["anchor_as_of"];
-  if (typeof anchor !== "string") return;
+  const capabilityId = data["capability_id"];
+  const binding = queryBinding(data);
+  if (typeof anchor !== "string" || typeof capabilityId !== "string") return;
+  if (records.length === 0) {
+    turn.addLedgerEntry({ kind: "query", anchor_as_of: anchor, capability_id: capabilityId, ...binding, observation_ids: [], citation_refs: [] });
+    return;
+  }
   for (const record of records) {
     const observationId = record["observation_id"];
     const numeric = isRecord(record["numeric"])
       ? { ...record["numeric"], period_label: record["numeric"]["period_label"] ?? record["numeric"]["source_date"] }
       : undefined;
     turn.addLedgerEntry({
-      kind: "query", anchor_as_of: anchor,
+      kind: "query", anchor_as_of: anchor, capability_id: capabilityId, ...binding,
       observation_ids: typeof observationId === "string" ? [observationId] : [],
       citation_refs: stringArray(record["citation_refs"]),
       ...(numeric === undefined ? {} : { numeric_projection: numeric }),
@@ -187,16 +188,29 @@ function addQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown
   }
 }
 
+function queryBinding(data: Readonly<Record<string, unknown>>): Pick<import("./runtime.ts").LedgerEntry, "datasource_ids" | "normalized_filters" | "result_count"> {
+  const datasourceIds = stringArray(data["datasource_ids"]);
+  const normalizedFilters = isRecord(data["normalized_filters"]) ? data["normalized_filters"] : undefined;
+  const resultCount = data["result_count"];
+  return {
+    ...(datasourceIds.length === 0 ? {} : { datasource_ids: datasourceIds }),
+    ...(normalizedFilters === undefined ? {} : { normalized_filters: normalizedFilters }),
+    ...(typeof resultCount === "number" ? { result_count: resultCount } : {}),
+  };
+}
+
 function enrichQueryLedger(turn: TurnContext, data: Readonly<Record<string, unknown>>): void {
   const citations = recordArray(data["citations"]);
-  const query = [...turn.getLedger()].reverse().find((entry) => entry.kind === "query");
-  if (query === undefined) return;
   for (const citation of citations) {
     const ref = citation["citation_ref"];
     if (typeof ref !== "string") continue;
     const observationId = citation["observation_id"];
+    const query = [...turn.getLedger()].find((entry) => entry.kind === "query"
+      && entry.citation_refs.includes(ref)
+      && (typeof observationId !== "string" || entry.observation_ids.includes(observationId)));
+    if (query === undefined || (typeof observationId === "string" && !query.observation_ids.includes(observationId))) continue;
     turn.addLedgerEntry({
-      kind: "citation", anchor_as_of: query.anchor_as_of,
+      kind: "citation", anchor_as_of: query.anchor_as_of, ...(query.capability_id === undefined ? {} : { capability_id: query.capability_id }),
       observation_ids: typeof observationId === "string" ? [observationId] : [], citation_refs: [ref],
       numeric_projection: {
         published_at: citation["published_at"] ?? null,

@@ -10,7 +10,7 @@ import { fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } f
 import { bootRuntime, type BootOptions, type BootedRuntime } from "../../src/boot.ts";
 import { FacadeLauncher, type ToolResult } from "../../src/facade-launcher.ts";
 import { finalizeBrief, type MarketBriefV1 } from "../../src/finalizer.ts";
-import { defaultTurnLimits, type AgentEvent, type SessionContext, type TurnContext } from "../../src/runtime.ts";
+import { defaultTurnLimits, TurnContext, type AgentEvent, type SessionContext } from "../../src/runtime.ts";
 import { runTurn, type TurnOutcome } from "../../src/turn-runner.ts";
 import { createFauxModels, FAUX_MODEL_REF } from "../helpers/faux-models.ts";
 import { fixtureAssets } from "./fixture-assets.ts";
@@ -47,7 +47,7 @@ export class RecordingLauncher extends FacadeLauncher {
   override async invoke(toolName: string, request: unknown): Promise<ToolResult> {
     const queue = this.#script.get(toolName);
     const scripted = queue?.shift();
-    const result = scripted ?? await super.invoke(toolName, request);
+    const result = scripted ?? await super.invoke(toolName, request, { timeoutSeconds: 60 });
     this.calls.push({ toolName, request, result });
     return result;
   }
@@ -66,29 +66,38 @@ export async function runFixture(options: {
   readonly prompt: string;
   readonly responses: (launcher: RecordingLauncher, clock: FixtureClock) => readonly FauxResponseStep[];
   readonly refreshScript?: RefreshScript;
+  readonly seed?: "bank-rate" | "planning";
+  readonly capabilityIds?: readonly string[];
+  readonly refreshProfiles?: readonly string[];
   readonly empty?: boolean;
   readonly stale?: boolean;
 }): Promise<Fixture> {
-  const dataDir = seedStore(options.fixture, options.empty ?? false, options.stale ?? false);
+  const dataDir = seedStore(options.fixture, options.seed ?? "bank-rate", options.empty ?? false, options.stale ?? false);
   process.env.PI_MODEL = FAUX_MODEL_REF;
   process.env.CRE_DATA_DIR = dataDir;
   process.env.PI_OFFLINE = "1";
   const launcher = new RecordingLauncher(dataDir, options.refreshScript);
   const clock = new FixtureClock();
   const faux = createFauxModels(options.responses(launcher, clock));
+  const populateLedger = options.seed === "planning" || options.capabilityIds?.includes("london-planning-activity") === true;
+  const ctx = {
+    ...context,
+    ...(options.capabilityIds === undefined ? {} : { allowed_capability_ids: options.capabilityIds }),
+    ...(options.refreshProfiles === undefined ? {} : { allowed_refresh_profiles: options.refreshProfiles }),
+  };
   const realFactory = await import("@earendil-works/pi-coding-agent");
   let createSessionCalls = 0;
   const createSession: NonNullable<BootOptions["createSession"]> = async (sessionOptions) => {
     createSessionCalls += 1;
     return realFactory.createAgentSession(sessionOptions);
   };
-  const booted = await bootRuntime(context, {
+  const booted = await bootRuntime(ctx, {
     modelsOverride: faux.models,
     launcher,
     createSession,
-    finalizeBrief: async (draft, turn) => finalizeFixture(draft, turn, launcher),
+    finalizeBrief: async (draft, turn) => finalizeFixture(draft, turn, launcher, populateLedger),
   });
-  const outcome = await runTurn(booted, options.prompt, { now: clock.now });
+  const outcome = await runTurn(booted, options.prompt, { now: clock.now, populateLedger });
   writeFixtureEvidence(options.fixture, outcome, launcher.calls);
   assertFixtureInvariants(outcome);
   return { booted, launcher, outcome, fauxCalls: faux.faux.state.callCount, createSessionCalls };
@@ -149,20 +158,29 @@ export function artifact(outcome: TurnOutcome): MarketBriefV1 {
   return outcome.artifact as MarketBriefV1;
 }
 
-function seedStore(fixture: string, empty: boolean, stale: boolean): string {
+function seedStore(fixture: string, seed: "bank-rate" | "planning", empty: boolean, stale: boolean): string {
   const dataDir = join(mkdtempSync(join(tmpdir(), `pi-fixture-${fixture}-`)), "data");
   if (empty) {
     execFileSync("uv", ["run", "cre", "--data-dir", dataDir, "db", "migrate"], { cwd: worktreeRoot });
+  } else if (seed === "planning") {
+    execFileSync("uv", ["run", "python", "agent-runtime/test/helpers/seed_pld_activity.py", dataDir], { cwd: worktreeRoot });
   } else {
     execFileSync("uv", ["run", "python", "agent-runtime/test/helpers/seed_bank_rate.py", dataDir, "5.25", ...(stale ? ["--stale"] : [])], { cwd: worktreeRoot });
   }
   return dataDir;
 }
 
-function finalizeFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher): MarketBriefV1 | Readonly<Record<string, unknown>> {
-  if (!isRecord(draft) || !Array.isArray(draft["facts"]) || draft["facts"].length === 0) {
-    return unavailableArtifact(draft);
-  }
+function finalizeFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher, populateLedger: boolean): MarketBriefV1 | Readonly<Record<string, unknown>> {
+  if (!populateLedger) return finalizeBankRateFixture(draft, turn, launcher);
+  const anchor = turn.getLedger().at(-1)?.anchor_as_of;
+  if (anchor === undefined) return finalizeBrief({ schema_version: "market_brief_draft.v1", ...recordDraft(draft) }, turn);
+  const finalizerTurn = new TurnContext(turn.session, turn.limits);
+  for (const entry of turn.getLedger()) if (entry.anchor_as_of === anchor) finalizerTurn.addLedgerEntry(entry);
+  return finalizeBrief({ schema_version: "market_brief_draft.v1", ...recordDraft(draft) }, finalizerTurn);
+}
+
+function finalizeBankRateFixture(draft: unknown, turn: TurnContext, launcher: RecordingLauncher): MarketBriefV1 | Readonly<Record<string, unknown>> {
+  if (!isRecord(draft) || !Array.isArray(draft["facts"]) || draft["facts"].length === 0) return unavailableArtifact(draft);
   const record = queryRecord(launcher);
   const numeric = record["numeric"];
   const citation = citationRecord(launcher);
@@ -199,10 +217,10 @@ function finalizeFixture(draft: unknown, turn: TurnContext, launcher: RecordingL
 }
 
 function unavailableArtifact(draft: unknown): Readonly<Record<string, unknown>> {
-  assert.ok(isRecord(draft));
-  const title = draft["title"];
-  const status = draft["status"];
-  const limitations = draft["limitations"];
+  const record = recordDraft(draft);
+  const title = record["title"];
+  const status = record["status"];
+  const limitations = record["limitations"];
   assert.equal(typeof title, "string");
   assert.equal(typeof status, "string");
   assert.ok(Array.isArray(limitations));
@@ -211,6 +229,11 @@ function unavailableArtifact(draft: unknown): Readonly<Record<string, unknown>> 
     title, status, facts: [], inferences: [], limitations,
     sources: [], lineage: {}, freshness_warnings: [], display_text: title,
   };
+}
+
+function recordDraft(draft: unknown): Readonly<Record<string, unknown>> {
+  assert.ok(isRecord(draft));
+  return draft;
 }
 
 function queryData(launcher: RecordingLauncher): Readonly<Record<string, unknown>> {

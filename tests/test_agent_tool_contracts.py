@@ -99,6 +99,14 @@ def test_language_neutral_fixtures_validate_each_selector_contract() -> None:
             _validator(contract.success_data_schema).validate(data)
 
 
+def test_query_success_contract_requires_host_binding_fields() -> None:
+    schema = load_tool_contracts()["query_market_data"].success_data_schema
+    required = schema["required"]
+
+    assert isinstance(required, list)
+    assert {"capability_id", "datasource_ids", "normalized_filters", "result_count"}.issubset(required)
+
+
 def test_invalid_fixtures_fail_the_selected_schema_while_policy_cases_remain_structural() -> None:
     catalog = load_tool_contracts()
     invalid = _fixture("invalid")

@@ -2,7 +2,11 @@
 
 ## Overview
 
-Pi Agent Runtime is a controlled Node/TypeScript agent service for the UK Bank Rate vertical slice. The model reaches market data only through six typed tools backed by the `nan-fung-agent-tools` facade. The host owns budgets, citations, and approval. The runtime produces a versioned `market_brief.v1` result rather than direct model output.
+Pi Agent Runtime is a controlled Node/TypeScript agent service for UK Bank Rate
+and borough/month planning-application activity. The model reaches market data
+only through six typed tools backed by the `nan-fung-agent-tools` facade. The
+host owns budgets, citations, and approval. The runtime produces a versioned
+`market_brief.v1` result rather than direct model output.
 
 ## Requirements
 
@@ -73,7 +77,13 @@ The fixtures cover ambiguous dates, explicit historical values, fresh latest val
 
 ## Production vs Test Policy
 
-The production allowlist is Bank Rate only: `uk.bank-rate-current` with the `bank-rate-latest` refresh profile. The ONSPD postcode capability, `uk.postcode-resolution` with `onspd-one-postcode`, exists only behind the hidden `test-online-v1` policy used by the Phase 2c approval gate. It is never in production.
+The production allowlist includes `uk.bank-rate-current` with the
+`bank-rate-latest` refresh profile and `london-planning-activity` with the
+`planning-activity-monthly` refresh profile. Planning activity is a
+borough/month, all-use-class proxy, not office-only supply or floorspace. The
+ONSPD postcode capability, `uk.postcode-resolution` with `onspd-one-postcode`,
+exists only behind the hidden `test-online-v1` policy used by the Phase 2c
+approval gate. It is never in production.
 
 ## What this runtime does NOT do
 
@@ -86,13 +96,13 @@ The production allowlist is Bank Rate only: `uk.bank-rate-current` with the `ban
 
 ## Product coverage limit
 
-The dashboard and runtime expose Bank Rate only. London office rent, vacancy,
-news, transaction, and supply questions are finalized as explicit unavailable
-coverage until their canonical source gates are approved; the UI does not
-invent KPI cards for them.
+The dashboard and runtime expose Bank Rate and borough/month planning activity.
+London office rent, vacancy, news, transaction, and project-supply questions
+are finalized as explicit unavailable coverage until their canonical source
+gates are approved; the UI does not invent KPI cards for them.
 
 ## Scope Claim
 
 a controlled Pi session and dashboard can produce a replayable,
 host-hydrated, citation-grounded `market_brief.v1` with explicit coverage
-limits, sourced from canonical Bank Rate.
+limits, sourced from canonical Bank Rate or planning-application activity.

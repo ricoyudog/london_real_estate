@@ -5,8 +5,10 @@ import type { SessionContext } from "./runtime.ts";
 
 const dashboardCapabilityIds = [
   "uk.bank-rate-current",
+  "london-planning-activity",
   "london-prime-rent",
   "london-office-vacancy",
+  "london-project-supply",
   "uk-investment-transactions",
   "uk-ranked-market-news",
 ] as const;

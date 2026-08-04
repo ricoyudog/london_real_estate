@@ -66,6 +66,18 @@ def test_packaged_manifest_and_profiles_define_the_launch_bank_rate_capability()
     assert not forbidden_fields & set(bank_rate)
 
 
+def test_planning_activity_permits_the_canonical_city_geography_filter() -> None:
+    manifest = load_capability_manifest()
+
+    planning = manifest["london-planning-activity"]
+
+    assert planning.status == "supported"
+    assert planning.datasource_ids == ("pld.applications_search",)
+    assert planning.query_templates["metrics"].allowed_filters == frozenset(
+        {"geography_code", "source_date_from", "source_date_to"}
+    )
+
+
 def test_describe_intersects_host_allowlist_but_preserves_partial_and_blocked_coverage() -> None:
     request = _fixture("requests.json", "describe_market_data")
     host_context = request["host_context"]

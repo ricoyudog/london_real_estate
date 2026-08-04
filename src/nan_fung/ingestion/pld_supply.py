@@ -259,6 +259,7 @@ class PLDRecord:
     def payload(self) -> Mapping[str, object]:
         return {
             "organisation_entity": self.organisation_entity,
+            "geography_code": self.organisation_entity,
             "borough": self.borough,
             "period_year": f"{self.period_year:04d}",
             "period_month": f"{self.period_month:02d}",

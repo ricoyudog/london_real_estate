@@ -41,6 +41,10 @@ export const TURN_LIMITS = defaultTurnLimits;
 export type LedgerEntry = {
   readonly kind: "query" | "citation";
   readonly anchor_as_of: string;
+  readonly capability_id?: string;
+  readonly datasource_ids?: readonly string[];
+  readonly normalized_filters?: Readonly<Record<string, unknown>>;
+  readonly result_count?: number;
   readonly observation_ids: readonly string[];
   readonly citation_refs: readonly string[];
   readonly numeric_projection?: unknown;

@@ -4,11 +4,12 @@ London Market Desk is an evidence-first London office research PoC. It combines
 a Python canonical data plane (SQLite + immutable evidence), a controlled Pi
 agent runtime, and one same-origin dashboard.
 
-The current launch scope is deliberately narrow: **UK Bank Rate is the only
-supported numeric market signal.** London office rent, vacancy, transactions,
-and ranked market news are visibly unavailable until approved canonical sources
-are delivered. The system must never fill those gaps with model-generated
-numbers.
+The current launch scope is deliberately narrow: **UK Bank Rate and
+borough/month planning-application activity are the supported numeric market
+signals.** Planning activity includes all use classes and is not office supply
+or floorspace. London office rent, vacancy, transactions, and ranked market
+news are visibly unavailable until approved canonical sources are delivered.
+The system must never fill those gaps with model-generated numbers.
 
 ![GLM-5.2 host-finalized Bank Rate brief](wiki/questions/Test_result/screenshots/dashboard-glm-desktop.jpg)
 

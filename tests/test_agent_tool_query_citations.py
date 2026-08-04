@@ -79,6 +79,31 @@ class CitationResolver:
         )
 
 
+class PLDCitationResolver(CitationResolver):
+    def _projection(self, anchor: datetime, observation_id: str) -> CitationProjection:
+        return CitationProjection(
+            anchor_as_of=anchor,
+            canonical_run_id="run_pld_canonical",
+            observation_id=observation_id,
+            evidence_id=f"ev_{observation_id}",
+            locator_hash="b" * 64,
+            datasource_id="pld.applications_search",
+            publisher="Ministry of Housing, Communities and Local Government",
+            retrieved_at=NOW,
+            access_class="open",
+            data_kind="numeric_observation",
+            confidence="medium",
+            limitations=("Includes all use classes, not office-specific.",),
+            locator={"kind": "csv_row", "row_key": observation_id},
+            title="Planning application data",
+            public_url="https://files.planning.data.gov.uk/dataset/planning-application.csv",
+            published_at=NOW,
+            source_updated_at=NOW,
+            licence_or_attribution="Crown copyright",
+            warnings=(),
+        )
+
+
 def _record(
     observation_id: str,
     *,
@@ -213,6 +238,227 @@ def test_query_projects_the_fixed_bank_rate_numeric_field_and_scoped_pagination(
     replayed_context["capability_scope_id"] = "scope_fedcba9876543210fedcba9876543210"
     denied = facade.execute("query_market_data", replayed_elsewhere)
     assert _error_code(denied) == "POLICY_DENIED"
+
+
+def test_planning_query_targets_city_july_with_canonical_citation_lineage() -> None:
+    records = tuple(
+        ReadRecord(
+            observation_id=f"pld_city_{index}",
+            datasource_id="pld.applications_search",
+            query_kind="metrics",
+            category="planning_activity",
+            record_type="metric",
+            access_class=AccessClass.OPEN,
+            available_at=NOW,
+            payload={
+                "geography_code": "203",
+                "organisation_entity": "203",
+                "planning_application_count": "2",
+            },
+            evidence_ids=(f"ev_pld_city_{index}",),
+            source_date=date(2026, 7, 1),
+            retrieved_at=NOW,
+            unit="count",
+            definition="Monthly count of decided planning applications.",
+            period_label="July 2026",
+            retrieval_freshness="fresh",
+            observation_freshness="fresh",
+        )
+        for index in range(1, 3)
+    )
+    facade = AgentToolFacade(
+        read_service=ReadService(
+            InMemoryReadRepository(records),
+            cursor_secret=b"planning-read-cursor-secret",
+            clock=lambda: NOW,
+        ),
+        citation_projection=PLDCitationResolver(),
+        handle_secret=b"p" * 32,
+        clock=lambda: NOW,
+    )
+    request = _fixture("query_bank_rate")
+    arguments = request["arguments"]
+    context = request["host_context"]
+    assert isinstance(arguments, dict)
+    assert isinstance(context, dict)
+    arguments.update(
+        {
+            "capability_id": "london-planning-activity",
+            "filters": {
+                "geography_code": "203",
+                "source_date_from": "2026-07-01",
+                "source_date_to": "2026-07-31",
+            },
+            "as_of": "2026-08-01T12:00:00Z",
+        }
+    )
+    context["allowed_capability_ids"] = ["london-planning-activity"]
+    context["allowed_refresh_profiles"] = ["planning-activity-monthly"]
+
+    query = facade.execute("query_market_data", request)
+
+    assert query["status"] == "ok"
+    query_data = query["data"]
+    assert isinstance(query_data, dict)
+    anchor_as_of = query_data["anchor_as_of"]
+    assert isinstance(anchor_as_of, str)
+    assert datetime.fromisoformat(anchor_as_of.replace("Z", "+00:00")) == NOW
+    assert query_data["total_count"] == 2
+    assert query_data["capability_id"] == "london-planning-activity"
+    assert query_data["datasource_ids"] == ["pld.applications_search"]
+    assert query_data["normalized_filters"] == {
+        "datasource_id": ["pld.applications_search"],
+        "geography_code": "203",
+        "source_date_from": "2026-07-01",
+        "source_date_to": "2026-07-31",
+    }
+    assert query_data["result_count"] == 2
+    returned = query_data["records"]
+    assert isinstance(returned, list)
+    assert [record["numeric"]["value"] for record in returned] == ["2", "2"]
+    selected_record = returned[0]
+    citation_ref = selected_record["citation_refs"][0]
+    assert isinstance(citation_ref, str)
+
+    citation_request = _citation_request(citation_ref)
+    citation_context = citation_request["host_context"]
+    assert isinstance(citation_context, dict)
+    citation_context["allowed_capability_ids"] = ["london-planning-activity"]
+    citation_context["allowed_refresh_profiles"] = ["planning-activity-monthly"]
+    citation = facade.execute("get_citation_metadata", citation_request)
+
+    assert citation["status"] == "ok"
+    citation_data = citation["data"]
+    assert isinstance(citation_data, dict)
+    citations = citation_data["citations"]
+    assert isinstance(citations, list)
+    assert citations[0]["datasource_id"] == "pld.applications_search"
+    assert citations[0]["observation_id"] == selected_record["observation_id"]
+    assert citations[0]["evidence_id"] == selected_record["evidence_ids"][0]
+    assert citations[0]["public_url"] == (
+        "https://files.planning.data.gov.uk/dataset/planning-application.csv"
+    )
+
+
+def test_planning_query_returns_no_numeric_records_without_canonical_pld() -> None:
+    facade = AgentToolFacade(
+        read_service=ReadService(
+            InMemoryReadRepository(()),
+            cursor_secret=b"planning-empty-read-cursor-secret",
+            clock=lambda: NOW,
+        ),
+        citation_projection=PLDCitationResolver(),
+        handle_secret=b"e" * 32,
+        clock=lambda: NOW,
+    )
+    request = _fixture("query_bank_rate")
+    arguments = request["arguments"]
+    context = request["host_context"]
+    assert isinstance(arguments, dict)
+    assert isinstance(context, dict)
+    arguments.update(
+        {
+            "capability_id": "london-planning-activity",
+            "filters": {
+                "geography_code": "203",
+                "source_date_from": "2026-07-01",
+                "source_date_to": "2026-07-31",
+            },
+            "as_of": "2026-08-01T12:00:00Z",
+        }
+    )
+    context["allowed_capability_ids"] = ["london-planning-activity"]
+    context["allowed_refresh_profiles"] = ["planning-activity-monthly"]
+
+    query = facade.execute("query_market_data", request)
+
+    assert query["status"] == "ok"
+    data = query["data"]
+    assert isinstance(data, dict)
+    assert data["capability_id"] == "london-planning-activity"
+    assert data["normalized_filters"] == {
+        "datasource_id": ["pld.applications_search"],
+        "geography_code": "203",
+        "source_date_from": "2026-07-01",
+        "source_date_to": "2026-07-31",
+    }
+    assert data["result_count"] == 0
+    assert data["records"] == []
+
+
+def _pld_record(
+    observation_id: str,
+    *,
+    canonical: bool = True,
+    lane: str = "production_ingestion",
+) -> ReadRecord:
+    return ReadRecord(
+        observation_id=observation_id,
+        datasource_id="pld.applications_search",
+        query_kind="metrics",
+        category="planning_activity",
+        record_type="metric",
+        access_class=AccessClass.OPEN,
+        available_at=NOW,
+        payload={
+            "geography_code": "203",
+            "organisation_entity": "203",
+            "planning_application_count": "2",
+        },
+        evidence_ids=(f"ev_{observation_id}",),
+        source_date=date(2026, 7, 1),
+        retrieved_at=NOW,
+        unit="count",
+        definition="Monthly count of decided planning applications.",
+        period_label="July 2026",
+        retrieval_freshness="fresh",
+        observation_freshness="fresh",
+        canonical=canonical,
+        lane=lane,
+    )
+
+
+def test_planning_query_rejects_source_discovery_lane_records() -> None:
+    discovery = _pld_record("pld_discovery", canonical=False, lane="source_discovery")
+    canonical = _pld_record("pld_city_canonical")
+    facade = AgentToolFacade(
+        read_service=ReadService(
+            InMemoryReadRepository((discovery, canonical)),
+            cursor_secret=b"pld-discovery-read-cursor-secret",
+            clock=lambda: NOW,
+        ),
+        citation_projection=PLDCitationResolver(),
+        handle_secret=b"d" * 32,
+        clock=lambda: NOW,
+    )
+    request = _fixture("query_bank_rate")
+    arguments = request["arguments"]
+    context = request["host_context"]
+    assert isinstance(arguments, dict)
+    assert isinstance(context, dict)
+    arguments.update(
+        {
+            "capability_id": "london-planning-activity",
+            "filters": {
+                "geography_code": "203",
+                "source_date_from": "2026-07-01",
+                "source_date_to": "2026-07-31",
+            },
+            "as_of": "2026-08-01T12:00:00Z",
+        }
+    )
+    context["allowed_capability_ids"] = ["london-planning-activity"]
+    context["allowed_refresh_profiles"] = ["planning-activity-monthly"]
+
+    query = facade.execute("query_market_data", request)
+
+    assert query["status"] == "ok"
+    data = query["data"]
+    assert isinstance(data, dict)
+    assert data["result_count"] == 1
+    records = data["records"]
+    assert isinstance(records, list)
+    assert [record["observation_id"] for record in records] == ["pld_city_canonical"]
 
 
 def test_cursor_and_citation_handles_reject_tampering_kind_binding_scope_and_expiry() -> None:

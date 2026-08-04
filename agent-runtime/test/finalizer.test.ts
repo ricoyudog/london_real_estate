@@ -4,6 +4,9 @@ import test from "node:test";
 import { DraftRejected, finalizeBrief, type MarketBriefDraftV1 } from "../src/finalizer.ts";
 import { TurnContext, defaultTurnLimits } from "../src/runtime.ts";
 
+const planningLimitation = "Planning application counts cover all use classes and are not office-only supply, floorspace, completions, rent, vacancy, or named-submarket evidence.";
+const planningAvailabilityLimitation = "No canonical planning-application activity is available for the requested borough and month.";
+
 const session = {
   principal: "principal",
   capability_scope_id: "scope_a",
@@ -60,6 +63,21 @@ const validDraft = (): MarketBriefDraftV1 => ({
   ],
   limitations: ["Coverage remains limited."],
 });
+
+const planningTurn = (): TurnContext => {
+  const turn = new TurnContext(session, defaultTurnLimits);
+  turn.addLedgerEntry({
+    kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "london-planning-activity",
+    observation_ids: ["planning-observation"], citation_refs: ["planning-citation"],
+    numeric_projection: { value: "2", unit: "applications", definition: "Planning application count", as_of: "2026-08-01", source_date: "2026-07-31", period_label: "July 2026" },
+  });
+  turn.addLedgerEntry({
+    kind: "citation", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "london-planning-activity",
+    observation_ids: ["planning-observation"], citation_refs: ["planning-citation"],
+    numeric_projection: { published_at: "2026-08-01T00:00:00Z", datasource_confidence: "high", source: "Planning Data", public_url: "https://files.planning.data.gov.uk" },
+  });
+  return turn;
+};
 
 const rejected = (draft: unknown, code: string) => {
   assert.throws(
@@ -203,6 +221,87 @@ test("finalizeBrief retains separately sourced confidence fields", () => {
   assert.equal(brief.datasource_confidence["rate"], "high");
   assert.equal(brief.fact_confidence["rate"], "medium");
   assert.equal(brief.inference_confidence["outlook"], "low");
+});
+
+test("finalizeBrief injects the host planning limitation for planning-backed facts", () => {
+  // Given: a fact resolved only through an authoritative planning query ledger entry
+  const draft: MarketBriefDraftV1 = { ...validDraft(), facts: [{ claim_id: "planning", kind: "numeric", confidence: "high", numeric_citation_ref: "planning-citation" }], inferences: [], limitations: [] };
+
+  // When: the host finalizes the planning brief
+  const brief = finalizeBrief(draft, planningTurn());
+
+  // Then: the fixed proxy limitation is added by the host
+  assert.ok(brief.limitations.includes(planningLimitation));
+});
+
+test("finalizeBrief makes an attempted zero-record planning query unavailable without lineage", () => {
+  // Given: host metadata for an empty planning attempt
+  const turn = new TurnContext(session, defaultTurnLimits);
+  turn.addLedgerEntry({ kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "london-planning-activity", observation_ids: [], citation_refs: [] });
+  const draft: MarketBriefDraftV1 = { schema_version: "market_brief_draft.v1", title: "Planning coverage", status: "partial", facts: [], inferences: [], limitations: [] };
+
+  // When: the model submits an empty brief
+  const brief = finalizeBrief(draft, turn);
+
+  // Then: canonical availability is host-authored and does not invent evidence
+  assert.equal(brief.status, "unavailable");
+  assert.deepEqual(brief.facts, []);
+  assert.deepEqual(brief.sources, []);
+  assert.deepEqual(brief.lineage, {});
+  assert.deepEqual(brief.limitations, [planningAvailabilityLimitation]);
+});
+
+test("finalizeBrief does not let a zero-record planning attempt relabel a Bank Rate fact", () => {
+  // Given: an earlier empty planning query and a later Bank Rate citation
+  const turn = planningTurn();
+  turn.addLedgerEntry({ kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "london-planning-activity", observation_ids: [], citation_refs: [] });
+  turn.addLedgerEntry({ kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "uk.bank-rate-current", observation_ids: ["rate-observation"], citation_refs: ["rate-citation"], numeric_projection: { value: "5.25", unit: "percent", definition: "Bank Rate", as_of: "2026-08-01", source_date: "2026-08-01", period_label: "Current" } });
+  turn.addLedgerEntry({ kind: "citation", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "uk.bank-rate-current", observation_ids: ["rate-observation"], citation_refs: ["rate-citation"], numeric_projection: { published_at: null, datasource_confidence: "high", source: "Bank of England", public_url: null } });
+  const draft: MarketBriefDraftV1 = { ...validDraft(), facts: [{ claim_id: "rate", kind: "numeric", confidence: "high", numeric_citation_ref: "rate-citation" }], inferences: [], limitations: [] };
+
+  // When: finalization resolves the Bank Rate citation
+  const brief = finalizeBrief(draft, turn);
+
+  // Then: no planning limitation leaks into the Bank Rate artifact
+  assert.equal(brief.facts[0]?.numeric_value, "5.25");
+  assert.ok(!brief.limitations.includes(planningLimitation));
+});
+
+test("finalizeBrief rejects planning claims that mislabel planning evidence", () => {
+  const forbidden = ["office supply", "floorspace", "completions", "rent", "vacancy", "Mayfair submarket"] as const;
+  const fields = ["title", "qualitative", "inference", "caveat", "limitation"] as const;
+  for (const field of fields) for (const claim of forbidden) {
+    // Given: a planning-backed draft with an adversarial claim in each model-authored field
+    const baseline: MarketBriefDraftV1 = { ...validDraft(), facts: [{ claim_id: "planning", kind: "numeric", confidence: "high", numeric_citation_ref: "planning-citation" }], inferences: [], limitations: [] };
+    const draft = field === "title" ? { ...baseline, title: claim }
+      : field === "qualitative" ? { ...baseline, facts: [...baseline.facts, { claim_id: "context", kind: "qualitative" as const, confidence: "low" as const, text: claim, supporting_citation_refs: ["planning-citation"] }] }
+      : field === "inference" ? { ...baseline, inferences: [{ claim_id: "outlook", text: claim, confidence: "low" as const, supporting_fact_ids: ["planning"], caveat: "Scope is limited." }] }
+      : field === "caveat" ? { ...baseline, inferences: [{ claim_id: "outlook", text: "Scope is limited.", confidence: "low" as const, supporting_fact_ids: ["planning"], caveat: claim }] }
+      : { ...baseline, limitations: [claim] };
+
+    // When/Then: planning proxy enforcement rejects every forbidden category
+    assert.throws(() => finalizeBrief(draft, planningTurn()), (error: unknown) => error instanceof DraftRejected && error.code === "PLANNING_PROXY_CLAIM");
+  }
+});
+
+test("finalizeBrief accepts model-negated planning scope wording", () => {
+  // Given: a planning-backed brief that correctly preserves the limitation
+  const draft: MarketBriefDraftV1 = { ...validDraft(), facts: [{ claim_id: "planning", kind: "numeric", confidence: "high", numeric_citation_ref: "planning-citation" }], inferences: [], limitations: ["Includes all use classes, not office-specific."] };
+
+  // When: the host finalizes it
+  const brief = finalizeBrief(draft, planningTurn());
+
+  // Then: accurate negated wording remains valid alongside the host limitation
+  assert.ok(brief.limitations.includes("Includes all use classes, not office-specific."));
+  assert.ok(brief.limitations.includes(planningLimitation));
+});
+
+test("finalizeBrief rejects a planning claim that hides a forbidden metric behind another negation", () => {
+  // Given: a planning claim with a correct office-supply negation but an incorrect rent claim
+  const draft: MarketBriefDraftV1 = { ...validDraft(), facts: [{ claim_id: "planning", kind: "numeric", confidence: "high", numeric_citation_ref: "planning-citation" }], inferences: [], limitations: ["This is not office supply, but it shows rent."] };
+
+  // When/Then: each forbidden metric must be independently negated
+  assert.throws(() => finalizeBrief(draft, planningTurn()), (error: unknown) => error instanceof DraftRejected && error.code === "PLANNING_PROXY_CLAIM");
 });
 
 test("finalizeBrief projects host source URLs and forces stale or degraded facts to partial", () => {

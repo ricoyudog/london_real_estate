@@ -23,8 +23,8 @@ const app = await createApp({
     principal: "dashboard-user",
     capability_scope_id: "dashboard-bootstrap",
     allowed_access_classes: ["open"],
-    allowed_capability_ids: ["uk.bank-rate-current"],
-    allowed_refresh_profiles: mode === "demo" ? [] : ["bank-rate-latest"],
+    allowed_capability_ids: ["uk.bank-rate-current", "london-planning-activity"],
+    allowed_refresh_profiles: mode === "demo" ? [] : ["bank-rate-latest", "planning-activity-monthly"],
   },
   creDataDir,
   deployment: {

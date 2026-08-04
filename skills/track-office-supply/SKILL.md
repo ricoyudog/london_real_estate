@@ -1,6 +1,6 @@
 ---
 name: track-office-supply
-description: Route London office supply questions through the typed agent facade. Surfaces the in-scope planning-activity proxy and the explicitly blocked project-supply (with floorspace) capability.
+description: Route London office supply questions through the typed agent facade. Surfaces the in-scope planning-authority activity proxy and the explicitly blocked project-supply (with floorspace) capability.
 type: skill
 ---
 
@@ -17,13 +17,17 @@ Call `describe_market_data` before any query. Two capabilities are relevant:
 
 ## Query the supported proxy
 
-For `london-planning-activity` call `query_market_data` with:
+For City of London authority activity, call `query_market_data` with:
 
 ```json
-{ "capability_id": "london-planning-activity", "query_kind": "metrics" }
+{
+  "capability_id": "london-planning-activity",
+  "query_kind": "metrics",
+  "filters": { "geography_code": "203" }
+}
 ```
 
-Preserve `anchor_as_of`, `numeric.value`, `numeric.unit`, `numeric.definition`, `source_date`, `retrieval_freshness`, `observation_freshness`, `degraded`, and any warnings. Borough-level granularity only; named submarkets (Mayfair, City of London) are not available from this capability.
+Preserve `anchor_as_of`, `numeric.value`, `numeric.unit`, `numeric.definition`, `source_date`, `retrieval_freshness`, `observation_freshness`, `degraded`, and any warnings. Planning-authority granularity only: the 32 London boroughs plus City of London Corporation are supported. City of London authority queries use geography code `203`; named broker submarkets such as Mayfair or the City core remain unavailable.
 
 Resolve `citation_refs` with `get_citation_metadata` (≤20 refs per call). A numeric fact needs a resolved citation before it can be presented.
 

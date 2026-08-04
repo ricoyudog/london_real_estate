@@ -22,8 +22,9 @@ const skillsRoot = join(repoRoot, "skills");
 const manifest: SkillManifest = {
   schema_version: "skills_manifest.v1",
   files: [
-    { path: "skills/track-uk-macro/SKILL.md", sha256: "ba2a0081b3210dbe4b8626dab11714dfa0da5a0e02f010deabebde20e695096f", bytes: 2912 },
-    { path: "skills/generate-grounded-market-brief/SKILL.md", sha256: "58719ab8f928cfab36726a054fc25ba02d9abf5e20a5068e9f3b728c4583fd90", bytes: 2250 },
+    { path: "skills/track-uk-macro/SKILL.md", sha256: "edee44052779890aed1e3bfb511bb6150910ff0262cf9bdb061ad891683fcc54", bytes: 3045 },
+    { path: "skills/generate-grounded-market-brief/SKILL.md", sha256: "07cfe3c9dfe05aab60aaea3324e59df9b548b5dc269246addafa9e89bc59174a", bytes: 2874 },
+    { path: "skills/track-office-supply/SKILL.md", sha256: "1a4e693fb7694ecc0fc399d4c30e4606b72e13ee4091e9f6787ff3e7fec9d8ff", bytes: 2364 },
   ],
 };
 const context: SessionContext = {
@@ -43,6 +44,7 @@ const expectedTools = [
 ] as const;
 const macroSkill = readFileSync(join(skillsRoot, "track-uk-macro", "SKILL.md"), "utf8");
 const briefSkill = readFileSync(join(skillsRoot, "generate-grounded-market-brief", "SKILL.md"), "utf8");
+const planningSkill = readFileSync(join(skillsRoot, "track-office-supply", "SKILL.md"), "utf8");
 
 test("(a) boot requires PI_MODEL", async () => {
   // Given: no configured model.
@@ -74,7 +76,7 @@ test("(b) boot preloads verified skills into a locked-down resource loader", asy
     },
   });
 
-  // Then: discovery is disabled and the prompt contains both complete skill bodies.
+  // Then: discovery is disabled and the prompt contains every active skill body.
   assert.ok(captured);
   assert.ok(captured.resourceLoader);
   assert.equal(captured.modelRuntime, modelsOverride);
@@ -90,6 +92,7 @@ test("(b) boot preloads verified skills into a locked-down resource loader", asy
   const prompt = captured.resourceLoader.getSystemPrompt();
   assert.ok(prompt?.includes(macroSkill));
   assert.ok(prompt?.includes(briefSkill));
+  assert.ok(prompt?.includes(planningSkill));
   restoreEnv("PI_MODEL", priorModel);
   restoreEnv("CRE_DATA_DIR", priorDataDir);
 });

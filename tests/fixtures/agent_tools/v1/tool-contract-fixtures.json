@@ -38,6 +38,10 @@
       "success_data": [
         {
           "anchor_as_of": "2026-08-01T12:00:00.000000Z",
+          "capability_id": "uk.bank-rate-current",
+          "datasource_ids": ["boe.bank_rate.iudbedr"],
+          "normalized_filters": {"datasource_id": ["boe.bank_rate.iudbedr"]},
+          "result_count": 1,
           "query_kind": "metrics",
           "records": [
             {
@@ -207,6 +211,10 @@
     "query_market_data": {
       "data": {
         "anchor_as_of": "2026-08-01T12:00:00.000000Z",
+        "capability_id": "uk.bank-rate-current",
+        "datasource_ids": ["boe.bank_rate.iudbedr"],
+        "normalized_filters": {"datasource_id": ["boe.bank_rate.iudbedr"]},
+        "result_count": 0,
         "query_kind": "metrics",
         "records": [],
         "total_count": 1,

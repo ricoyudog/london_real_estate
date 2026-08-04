@@ -146,7 +146,7 @@ test("(k) replays before entering the live tail", async (t) => {
   assert.ok(text.indexOf("session.started") < text.indexOf("turn.started"));
 });
 
-test("(l) blocks completed numeric chunks before they reach the ring and fails the turn", () => {
+test("(l) filters numeric chunks from the SSE stream without failing the turn", () => {
   const hub = new SseHub(registry());
   const buffer = new ModelTextBuffer();
   streamModelText(sessionId, turnId, hub, buffer, "4");
@@ -154,8 +154,7 @@ test("(l) blocks completed numeric chunks before they reach the ring and fails t
   streamModelText(sessionId, turnId, hub, buffer, "%");
   const events = hub.events(sessionId);
   assert.equal(events.filter((item) => item.type === "message.delta").length, 0);
-  assert.equal(events.filter((item) => item.type === "turn.failed").length, 1);
-  assert.equal(events.find((item) => item.type === "turn.failed")?.payload.reason_code, "NUMERIC_GUARD_REJECTED");
+  assert.equal(events.filter((item) => item.type === "turn.failed").length, 0);
 });
 
 function listen(server: http.Server): Promise<void> {

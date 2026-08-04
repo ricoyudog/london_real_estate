@@ -16,4 +16,9 @@ def test_every_registry_datasource_has_explicit_workflow_or_blocked_state() -> N
         == "on_demand_explicit_retention_required"
     )
     assert catalog["rightmove.commercial_insights_tracker"].state == "manual_review"
-    assert catalog["pld.applications_search"].state == "blocked"
+    assert catalog["pld.applications_search"].state == "operational"
+    assert (
+        catalog["pld.applications_search"].degraded_behavior
+        == "current_vintage_backfill_blocked"
+    )
+    assert catalog["pld.application"].state == "blocked"

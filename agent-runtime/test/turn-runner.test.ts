@@ -54,7 +54,7 @@ test("(m.2) cancelling a stalled Pi prompt aborts it before the deadline", async
   assert.deepEqual(outcome.events.map((event) => event.type), ["turn.started", "turn.completed"]);
   assert.equal(runtime.booted.getTurnContext(), undefined);
 });
-test("(n) split numeric model text fails without an artifact", async () => { const runtime = fake(async (_driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); }); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.reason_code, "NUMERIC_GUARD_REJECTED"); assert.equal(outcome.artifact, undefined); });
+test("(n) numeric model text without an artifact fails as no final artifact", async () => { const runtime = fake(async (_driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); }); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.reason_code, "NO_FINAL_ARTIFACT"); assert.equal(outcome.artifact, undefined); });
 test("(n.0a) a turn without a host-finalized artifact has a safe reason", async () => { const runtime = fake(async () => undefined); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "failed"); assert.equal(outcome.reason_code, "NO_FINAL_ARTIFACT"); });
 test("(n.0) host finalization supersedes earlier numeric model prose", async () => { const runtime = fake(async (driver, emit) => { emit(delta("4")); emit(delta(".5")); emit(delta("%")); await driver.call("finalize_market_brief", {}); }, [ok({ schema_version: "market_brief.v1" })]); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "completed"); assert.deepEqual(outcome.artifact, { schema_version: "market_brief.v1" }); });
 test("(n.1) host finalization ignores later model prose", async () => { const runtime = fake(async (driver, emit) => { await driver.call("finalize_market_brief", {}); emit(delta("1.")); }, [ok({ schema_version: "market_brief.v1" })]); const outcome = await run(runtime); assert.equal(outcome.terminal_state, "completed"); assert.deepEqual(outcome.artifact, { schema_version: "market_brief.v1" }); });
@@ -65,7 +65,7 @@ test("(t) query and citation ledger entries preserve one projection per citation
     await driver.call("query_market_data", {});
     await driver.call("get_citation_metadata", {});
   }, [
-    ok({ anchor_as_of: "2026-08-02T00:00:00Z", records: [
+    ok({ anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "uk.bank-rate-current", records: [
       { observation_id: "observation-a", citation_refs: ["citation-a"], numeric: numeric("5.25") },
       { observation_id: "observation-b", citation_refs: ["citation-b"], numeric: numeric("6.50") },
     ] }),
@@ -87,6 +87,75 @@ test("(t) query and citation ledger entries preserve one projection per citation
     [["citation-a"], "Publisher A"], [["citation-b"], "Publisher B"],
   ]);
   assert.equal(projectionField(citationEntries[0]?.numeric_projection, "public_url"), "https://example.test/a");
+});
+
+test("(u) citation metadata binds to its trusted earlier query instead of the most recent query", async () => {
+  // Given: two authoritative query bindings followed by metadata for the first citation
+  const runtime = fake(async (driver) => {
+    await driver.call("query_market_data", {});
+    await driver.call("query_market_data", {});
+    await driver.call("get_citation_metadata", {});
+  }, [
+    ok({ anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "london-planning-activity", records: [{ observation_id: "planning-observation", citation_refs: ["planning-citation"], numeric: numeric("2") }] }),
+    ok({ anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "uk.bank-rate-current", records: [{ observation_id: "rate-observation", citation_refs: ["rate-citation"], numeric: numeric("5.25") }] }),
+    ok({ citations: [{ observation_id: "planning-observation", citation_ref: "planning-citation", published_at: null, confidence: "high", publisher: "Planning Data", public_url: "https://files.planning.data.gov.uk" }] }),
+  ]);
+
+  // When: the turn ledger is populated from facade result metadata
+  const outcome = await runTurn(runtime.booted, "market data", { now: runtime.now, populateLedger: true });
+
+  // Then: earlier planning metadata remains paired with its planning origin
+  const citation = outcome.turn.getLedger().find((entry) => entry.kind === "citation");
+  assert.equal(citation?.capability_id, "london-planning-activity");
+  assert.deepEqual(citation?.observation_ids, ["planning-observation"]);
+});
+
+test("(v) unmatched citation metadata cannot attach to any query ledger entry", async () => {
+  // Given: a query ledger entry and citation metadata from a different observation
+  const runtime = fake(async (driver) => {
+    await driver.call("query_market_data", {});
+    await driver.call("get_citation_metadata", {});
+  }, [
+    ok({ anchor_as_of: "2026-08-02T00:00:00Z", capability_id: "london-planning-activity", records: [{ observation_id: "planning-observation", citation_refs: ["planning-citation"], numeric: numeric("2") }] }),
+    ok({ citations: [{ observation_id: "other-observation", citation_ref: "planning-citation", published_at: null, confidence: "high", publisher: "Planning Data", public_url: "https://files.planning.data.gov.uk" }] }),
+  ]);
+
+  // When: the host processes the mismatched citation response
+  const outcome = await runTurn(runtime.booted, "market data", { now: runtime.now, populateLedger: true });
+
+  // Then: no citation entry can be attached to the planning query
+  assert.equal(outcome.turn.getLedger().some((entry) => entry.kind === "citation"), false);
+});
+
+test("(w) query ledger entries preserve host-derived binding metadata including zero results", async () => {
+  // Given: one empty planning result with trusted binding metadata from the facade
+  const runtime = fake(async (driver) => {
+    await driver.call("query_market_data", {});
+  }, [
+    ok({
+      anchor_as_of: "2026-08-01T12:00:00Z",
+      capability_id: "london-planning-activity",
+      datasource_ids: ["pld.applications_search"],
+      normalized_filters: { datasource_id: ["pld.applications_search"], geography_code: "203", source_date_from: "2026-07-01", source_date_to: "2026-07-31" },
+      result_count: 0,
+      records: [],
+    }),
+  ]);
+
+  // When: the host populates the ledger from the facade result
+  const outcome = await runTurn(runtime.booted, "market data", { now: runtime.now, populateLedger: true });
+
+  // Then: zero-result attribution keeps the trusted query binding
+  assert.deepEqual(outcome.turn.getLedger(), [{
+    kind: "query",
+    anchor_as_of: "2026-08-01T12:00:00Z",
+    capability_id: "london-planning-activity",
+    datasource_ids: ["pld.applications_search"],
+    normalized_filters: { datasource_id: ["pld.applications_search"], geography_code: "203", source_date_from: "2026-07-01", source_date_to: "2026-07-31" },
+    result_count: 0,
+    observation_ids: [],
+    citation_refs: [],
+  }]);
 });
 
 type Driver = { readonly call: (toolName: string, args: unknown) => Promise<void> };

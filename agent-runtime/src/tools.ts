@@ -40,6 +40,7 @@ type FacadeToolConfig = {
   readonly parameters: ToolDefinition["parameters"];
   readonly allowed: readonly string[];
 };
+const hostOnlyQueryFields = ["capability_id", "datasource_ids", "normalized_filters", "result_count"] as const;
 
 const text = Type.String({ minLength: 1, maxLength: 4096, pattern: "\\S" });
 const queryKinds = Type.Union([
@@ -225,7 +226,13 @@ function toolResult(details: ToolResult, aliases?: ModelHandleAliases) {
 }
 
 function modelVisibleText(result: ToolResult, aliases?: ModelHandleAliases): string {
-  return JSON.stringify({ status: result.status, data: aliases === undefined ? result.data : aliases.present(result.data) });
+  const data = hideHostQueryMetadata(result.data);
+  return JSON.stringify({ status: result.status, data: aliases === undefined ? data : aliases.present(data) });
+}
+
+function hideHostQueryMetadata(data: Readonly<Record<string, unknown>> | null): Readonly<Record<string, unknown>> | null {
+  if (data === null || !Object.hasOwn(data, "records")) return data;
+  return Object.fromEntries(Object.entries(data).filter(([key]) => !hostOnlyQueryFields.some((field) => field === key)));
 }
 
 type HandleKind = "citation" | "cursor" | "job";

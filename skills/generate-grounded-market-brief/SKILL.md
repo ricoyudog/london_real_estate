@@ -6,6 +6,18 @@ type: skill
 
 # Generate a Grounded Market Brief
 
+## Never stream numbers in prose
+
+The host runs a numeric guard over every chunk of your streamed assistant text AND over every text field in your `market_brief_draft.v1` (title, qualitative fact text, inference text, caveat, limitation text). If any of these contain a numeric value — digits, years (e.g. "2026"), dates, percent signs, currency symbols, English number words ("two", "third"), or Chinese numerals — the host kills the turn immediately as `NUMERIC_GUARD_REJECTED` and your brief is never delivered.
+
+Therefore: **do not put numbers anywhere.** Not in streamed prose, not in the title, not in qualitative facts, not in inferences, not in caveats, not in limitations. Numeric values live exclusively behind `numeric_citation_ref`, hydrated by the host from cited observations.
+
+- Title: use category names only, never dates or counts. Write "City of London planning activity" — NOT "City of London Planning Applications July 2026".
+- Streamed text: emit at most non-numeric framing like "Finalizing your brief." If you have nothing non-numeric to say, emit no streamed text and go straight to tool calls.
+- Qualitative facts and inferences: describe scope and source quality without numbers. Write "Data covers all use classes" — NOT "Data covers July 2026".
+
+## Finalize exactly once
+
 After gathering facts and resolving their citations, your FINAL action MUST be exactly one `finalize_market_brief` call with the complete `market_brief_draft.v1`. Without that call no brief is delivered and the turn has failed.
 
 Use `finalize_market_brief` only after gathering the facts and resolving the citations that support them. A `complete`, `partial`, or `unavailable` brief is a successful delivery; a partial brief with explicit limitations is preferable to refusing to finalize. Submit a bounded `market_brief_draft.v1` with this shape:

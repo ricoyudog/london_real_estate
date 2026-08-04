@@ -150,7 +150,10 @@ test("facade adapters expose compact aliases and resolve them only in the host",
   const opaqueCursor = "h1.opaque-cursor-handle";
   const typedResult: ToolResult = {
     ...okResult,
-    data: { records: [{ citation_refs: [opaqueCitation] }], cursor_ref: opaqueCursor },
+    data: {
+      records: [{ citation_refs: [opaqueCitation] }], cursor_ref: opaqueCursor,
+      capability_id: "uk.bank-rate-current", datasource_ids: ["boe.bank_rate.iudbedr"], normalized_filters: { datasource_id: ["boe.bank_rate.iudbedr"] }, result_count: 1,
+    },
   };
   const launcher = new SpyLauncher(typedResult);
   let finalized: unknown;

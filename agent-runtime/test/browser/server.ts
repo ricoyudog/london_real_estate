@@ -6,13 +6,27 @@ import process from "node:process";
 
 import type { BootOptions } from "../../src/boot.ts";
 import { createApp } from "../../src/app.ts";
+import { FacadeLauncher } from "../../src/facade-launcher.ts";
+
+// ponytail: one Python process for both seeders — pays uv startup + nan_fung
+// import once; sequential calls are safe on the single-writer OperationalStore.
+const SEED_BOTH = [
+  "import sys",
+  "from pathlib import Path",
+  "sys.path.insert(0, str(Path('agent-runtime/test/helpers').resolve()))",
+  "from seed_bank_rate import seed_bank_rate",
+  "from seed_pld_activity import seed_pld_activity",
+  'seed_bank_rate(Path(sys.argv[1]), "5.25")',
+  "seed_pld_activity(Path(sys.argv[1]))",
+].join("; ");
 
 const runtimeRoot = resolve(import.meta.dirname, "../..");
 const worktreeRoot = resolve(runtimeRoot, "..");
 const temporaryRoot = mkdtempSync(join(tmpdir(), "market-desk-browser-"));
 const dataDir = join(temporaryRoot, "data");
+const facadeBridge = resolve(runtimeRoot, "test/helpers/facade-fd3-bridge.py");
 
-execFileSync("uv", ["run", "python", "agent-runtime/test/helpers/seed_bank_rate.py", dataDir, "5.25"], { cwd: worktreeRoot });
+execFileSync("uv", ["run", "python", "-c", SEED_BOTH, dataDir], { cwd: worktreeRoot });
 process.env.PI_MODEL = "faux/model";
 
 const activeToolNames = [
@@ -29,10 +43,11 @@ const app = await createApp({
     principal: "browser-test",
     capability_scope_id: "browser-test",
     allowed_access_classes: ["open"],
-    allowed_capability_ids: ["uk.bank-rate-current"],
+    allowed_capability_ids: ["uk.bank-rate-current", "london-planning-activity"],
     allowed_refresh_profiles: [],
   },
   creDataDir: dataDir,
+  launcher: new FacadeLauncher({ creDataDir: dataDir, binaryPath: facadeBridge }),
   modelsOverride: { getModel: () => ({ provider: "faux", id: "model" }) },
   createSession: scriptedSession,
   deployment: { mode: "demo", fixture_label: "Deterministic Bank Rate fixture" },
@@ -100,6 +115,38 @@ async function scriptedSession(options: Parameters<NonNullable<BootOptions["crea
           facts: [],
           inferences: [],
           limitations: ["The requested office-market coverage is not available in the canonical launch scope."],
+        });
+        return;
+      }
+      if (/project supply/i.test(message)) {
+        await call("describe_market_data", {});
+        await call("finalize_market_brief", {
+          title: "Project supply brief",
+          status: "unavailable",
+          facts: [],
+          inferences: [],
+          limitations: ["The requested project-supply coverage is not available in the canonical launch scope."],
+        });
+        return;
+      }
+      if (/City of London.*July 2026/i.test(message)) {
+        const query = await call("query_market_data", {
+          capability_id: "london-planning-activity",
+          query_kind: "metrics",
+          filters: { geography_code: "203", source_date_from: "2026-07-01", source_date_to: "2026-07-31" },
+          as_of: "2026-08-01T12:00:00Z",
+          limit: 1,
+        });
+        const records = array(record(query["data"])["records"]);
+        const first = record(records[0]);
+        const citationRefs = array(first["citation_refs"]).filter((value): value is string => typeof value === "string");
+        await call("get_citation_metadata", { citation_refs: citationRefs });
+        await call("finalize_market_brief", {
+          title: "City planning activity",
+          status: "complete",
+          facts: [{ claim_id: "planning-activity", kind: "numeric", confidence: "medium", numeric_citation_ref: citationRefs[0] }],
+          inferences: [],
+          limitations: [],
         });
         return;
       }
