@@ -79,6 +79,25 @@ const planningTurn = (): TurnContext => {
   return turn;
 };
 
+const capabilityTurn = (capabilityId: string): TurnContext => {
+  const turn = new TurnContext(session, defaultTurnLimits);
+  turn.addLedgerEntry({
+    kind: "query", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: capabilityId,
+    observation_ids: ["capability-observation"], citation_refs: ["capability-citation"],
+    numeric_projection: { value: "1", unit: "index", definition: "Capability measure", as_of: "2026-08-01", source_date: "2026-08-01", period_label: "Current" },
+  });
+  turn.addLedgerEntry({
+    kind: "citation", anchor_as_of: "2026-08-02T00:00:00Z", capability_id: capabilityId,
+    observation_ids: ["capability-observation"], citation_refs: ["capability-citation"],
+    numeric_projection: { published_at: null, datasource_confidence: "high", source: "Official source", public_url: null },
+  });
+  return turn;
+};
+
+const capabilityDraft = (title: string): MarketBriefDraftV1 => ({
+  ...validDraft(), title, facts: [{ claim_id: "capability", kind: "numeric", confidence: "high", numeric_citation_ref: "capability-citation" }], inferences: [], limitations: [],
+});
+
 const rejected = (draft: unknown, code: string) => {
   assert.throws(
     () => finalizeBrief(draft, turnWithCitation()),
@@ -302,6 +321,43 @@ test("finalizeBrief rejects a planning claim that hides a forbidden metric behin
 
   // When/Then: each forbidden metric must be independently negated
   assert.throws(() => finalizeBrief(draft, planningTurn()), (error: unknown) => error instanceof DraftRejected && error.code === "PLANNING_PROXY_CLAIM");
+});
+
+test("finalizeBrief rejects capability-specific proxy claims", () => {
+  const cases = [
+    ["uk.gdp.current", "London office conditions", "GDP_PROXY_CLAIM"],
+    ["uk.inflation.current", "office rent outlook", "INFLATION_PROXY_CLAIM"],
+    ["uk.labour.current", "office vacancy signal", "LABOUR_PROXY_CLAIM"],
+    ["uk.employment.london", "office rent outlook", "EMPLOYMENT_PROXY_CLAIM"],
+    ["uk.hybrid-working", "office occupancy trend", "HYBRID_PROXY_CLAIM"],
+    ["london.epc-certificates", "office certificates total", "EPC_PROXY_CLAIM"],
+    ["london.office-stock", "vacancy measure", "OFFICE_STOCK_PROXY_CLAIM"],
+  ] as const;
+  for (const [capabilityId, title, code] of cases) {
+    // Given: a draft backed by a proxy capability and relabelled in its title
+    const draft = capabilityDraft(title);
+
+    // When/Then: the capability-specific guard rejects the relabelling
+    assert.throws(() => finalizeBrief(draft, capabilityTurn(capabilityId)), (error: unknown) => error instanceof DraftRejected && error.code === code);
+  }
+});
+
+test("finalizeBrief accepts negated capability proxy claims", () => {
+  const cases = [
+    ["uk.gdp.current", "not London office evidence"],
+    ["uk.hybrid-working", "not office occupancy evidence"],
+    ["london.office-stock", "no vacancy evidence"],
+  ] as const;
+  for (const [capabilityId, title] of cases) {
+    // Given: a capability-backed draft accurately states the prohibited scope is absent
+    const draft = capabilityDraft(title);
+
+    // When: the host finalizes it
+    const brief = finalizeBrief(draft, capabilityTurn(capabilityId));
+
+    // Then: the negated limitation remains valid
+    assert.equal(brief.title, title);
+  }
 });
 
 test("finalizeBrief projects host source URLs and forces stale or degraded facts to partial", () => {

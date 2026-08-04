@@ -19,6 +19,15 @@ const planningCapabilityId = "london-planning-activity";
 const planningLimitation = "Planning application counts cover all use classes and are not office-only supply, floorspace, completions, rent, vacancy, or named-submarket evidence.";
 const planningAvailabilityLimitation = "No canonical planning-application activity is available for the requested borough and month.";
 const planningClaimTerms = [/\boffice(?:-only)?\s+supply\b/iu, /\bfloorspace\b/iu, /\b(?:completions?|completed\s+projects?)\b/iu, /\brent\b/iu, /\bvacancy\b/iu, /\b(?:named[-\s]+)?submarket\b/iu];
+const CAPABILITY_CLAIM_GUARDS: Readonly<Record<string, ReadonlyArray<{ readonly pattern: RegExp; readonly rejectCode: string }>>> = {
+  "uk.gdp.current": [{ pattern: /London office|office rent|office vacancy/iu, rejectCode: "GDP_PROXY_CLAIM" }],
+  "uk.inflation.current": [{ pattern: /London office|office rent|office vacancy/iu, rejectCode: "INFLATION_PROXY_CLAIM" }],
+  "uk.labour.current": [{ pattern: /London office|office rent|office vacancy/iu, rejectCode: "LABOUR_PROXY_CLAIM" }],
+  "uk.employment.london": [{ pattern: /office rent|office vacancy|London office (?!employment)/iu, rejectCode: "EMPLOYMENT_PROXY_CLAIM" }],
+  "uk.hybrid-working": [{ pattern: /office occupancy|office demand|building access/iu, rejectCode: "HYBRID_PROXY_CLAIM" }],
+  "london.epc-certificates": [{ pattern: /office only|office certificates/iu, rejectCode: "EPC_PROXY_CLAIM" }],
+  "london.office-stock": [{ pattern: /vacancy|floorspace|available floor area|market rent/iu, rejectCode: "OFFICE_STOCK_PROXY_CLAIM" }],
+};
 
 type Status = (typeof statuses)[number];
 type Confidence = (typeof confidences)[number];
@@ -219,6 +228,10 @@ export const finalizeBrief = (input: unknown, turn: TurnContext): MarketBriefV1 
   const references = resolveReferences(draft, ledger);
   const planningBacked = [...references.values()].some(({ entry }) => entry.capability_id === planningCapabilityId);
   if (planningBacked) guardPlanningClaims(draft);
+  for (const capabilityId of new Set([...references.values()].map(({ entry }) => entry.capability_id))) {
+    const guards = capabilityId === undefined ? undefined : CAPABILITY_CLAIM_GUARDS[capabilityId];
+    if (guards !== undefined) for (const { pattern, rejectCode } of guards) guardCapabilityClaims(draft, [pattern], rejectCode);
+  }
   const emptyPlanningAttempt = draft.facts.length === 0 && turn.getLedger().some((entry) => entry.kind === "query" && entry.capability_id === planningCapabilityId && entry.observation_ids.length === 0);
   const sources = [...references.values()].map(({ ref, projection }) => ({
     citation_ref: ref,
@@ -378,6 +391,21 @@ const guardPlanningClaims = (draft: MarketBriefDraftV1): void => {
     for (const term of planningClaimTerms) {
       const match = term.exec(value);
       if (match !== null && !isNegatedClaim(value, match.index)) throw new DraftRejected("PLANNING_PROXY_CLAIM");
+    }
+  }
+};
+
+const guardCapabilityClaims = (draft: MarketBriefDraftV1, prohibitedTerms: readonly RegExp[], rejectCode: string): void => {
+  const text = [
+    draft.title,
+    ...draft.limitations,
+    ...draft.facts.flatMap((fact) => fact.kind === "qualitative" ? [fact.text] : []),
+    ...draft.inferences.flatMap((inference) => [inference.text, inference.caveat]),
+  ];
+  for (const value of text) {
+    for (const term of prohibitedTerms) {
+      const match = term.exec(value);
+      if (match !== null && !isNegatedClaim(value, match.index)) throw new DraftRejected(rejectCode);
     }
   }
 };
