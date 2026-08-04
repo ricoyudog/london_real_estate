@@ -4,12 +4,32 @@ London Market Desk is an evidence-first London office research PoC. It combines
 a Python canonical data plane (SQLite + immutable evidence), a controlled Pi
 agent runtime, and one same-origin dashboard.
 
-The current launch scope is deliberately narrow: **UK Bank Rate and
-borough/month planning-application activity are the supported numeric market
-signals.** Planning activity includes all use classes and is not office supply
-or floorspace. London office rent, vacancy, transactions, and ranked market
-news are visibly unavailable until approved canonical sources are delivered.
-The system must never fill those gaps with model-generated numbers.
+The agent currently supports **nine canonical market-data capabilities** backed
+by UK official open-data sources (OGL v3.0 or Crown copyright). Each capability
+is queryable through the dashboard UI; the host finalizer owns all numeric
+values and enforces capability-specific claim guards to prevent proxy
+relabelling (e.g. GDP figures cannot be presented as London office metrics).
+
+**Supported capabilities:**
+
+| Capability | Source | What it returns |
+|---|---|---|
+| UK Bank Rate | Bank of England IUDBEDR | Official interest rate |
+| London planning activity | planning.data.gov.uk (Crown copyright) | Decided planning applications per London authority per month |
+| UK GDP | ONS ECYX / IHYQ | GDP index and growth rate |
+| UK inflation | ONS D7G7 / L55O / CZBH | CPIH, OOH, and GDP deflator |
+| UK labour market | ONS LF24 / MGSX / AP2Y / KAI9 | Unemployment, employment, vacancies |
+| London employment | Nomis NM_59_1 / NM_130_1 | London LFS and workforce jobs |
+| UK hybrid working | ONS OPN survey | Great Britain hybrid-working share |
+| London office stock | VOA NDR Stock of Properties | Annual office hereditaments count (stock, not vacancy) |
+| London EPC certificates | MHCLG Table A | Non-domestic EPC lodgements |
+
+**Visibly unavailable** (no compliant public source exists — see
+[rent survey](wiki/research/datasource/office-rent-canonical-survey.md) and
+[vacancy survey](wiki/research/datasource/office-vacancy-canonical-survey.md)):
+London office rent, vacancy, leasing transactions, project-level supply, and
+ranked market news. The system must never fill those gaps with model-generated
+numbers.
 
 ![GLM-5.2 host-finalized Bank Rate brief](wiki/questions/Test_result/screenshots/dashboard-glm-desktop.jpg)
 

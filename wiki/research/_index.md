@@ -1,6 +1,6 @@
 ---
 type: wiki
-updated: 2026-08-03
+updated: 2026-08-04
 ---
 
 # Research Index
@@ -27,6 +27,8 @@ source-policy approval；現時 operational 狀態見
 #### Source surveys (canonical-eligibility deep dives)
 
 - [[wiki/research/datasource/planning-data-gov-uk-survey|planning.data.gov.uk Crown Copyright Survey — 2026-08-03]] — verified OGL v3 source for `london-planning-activity`; documents why `london-project-supply` floorspace is unattainable on public data
+- [[wiki/research/datasource/office-rent-canonical-survey|London Office Rent Canonical-Eligibility Survey — 2026-08-04]] — verified no OGL dataset publishes Prime / Grade A / achieved office rent at submarket granularity; `london-office-rent` stays blocked. Covers ONS IPHRP/PIPR, VOA rating list (restricted licence — not OGL), VOA statistical releases, MHCLG historical tables, GLA London Datastore, CoStar/JLL/CBRE/Savills/Knight Frank/Cushman & Wakefield (vendor copyright), MSCI/IPD/Estama (subscription), Eurostat HICP
+- [[wiki/research/datasource/office-vacancy-canonical-survey|London Office Vacancy / Availability Canonical-Eligibility Survey — 2026-08-04]] — verified no OGL source measures office vacancy / availability at submarket granularity; `london-office-vacancy` stays blocked. Documents that even the GLA uses CoStar for vacancy analysis, HSDS/LDC is subscriber-only, and Westminster + City of London (the two largest office markets) withhold borough business-rates publication
 
 #### 13 coverage topics
 
